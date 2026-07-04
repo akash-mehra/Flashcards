@@ -1526,7 +1526,8 @@ function closeSettingsIfBackdrop(e){
 /* =========================================================================
    PDF → GEMINI FLASHCARD GENERATION PIPELINE
    ========================================================================= */
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+
 const MAX_PDF_PAGES = 300;
 const FLASHCARD_GEN_PROMPT = "You are an expert medical professor compiling high-yield flashcards for a house surgeon preparing for highly competitive residency entrance examinations. Analyze the provided multi-page medical PDF document. Extract exactly 100 of the most critical, highest-yield clinical pearls, definitions, diagnostic flowcharts, and drug side-effect profiles. Format your output strictly as a raw JSON array matching this exact schema layout without markdown blocks, without backticks, and without conversational text wrapper padding: [{\"subject\": \"string\", \"question\": \"string\", \"answer\": \"string\"}].";
 
