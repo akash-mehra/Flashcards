@@ -1696,7 +1696,7 @@ async function runGenerationPipeline(){
     const base64Pdf = await fileToBase64(selectedPdfFile);
     setPipelineStep("read", "done");
 
-    // Step 2 — silently send it to Gemini 1.5 Flash
+        // Step 2 — silently send it to Gemini 1.5 Flash
     setPipelineStep("send", "active");
     const payload = {
       contents: [{
@@ -1707,11 +1707,15 @@ async function runGenerationPipeline(){
       }],
       generationConfig: { temperature: 0.4 }
     };
-    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey
+      },
       body: JSON.stringify(payload)
     });
+
     if(!response.ok){
       const errBody = await response.text();
       throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0,200)}`);
