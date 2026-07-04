@@ -1,0 +1,2237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#120E1C" />
+<title>Recall — Medical Flashcards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Firebase Auth (compat build — swap firebaseConfig below with your own free Firebase project keys) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<!-- pdf.js — used locally in-browser only to count PDF pages for the 300-page limit check -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+<style>
+  :root{
+    --bg-0:#0F0B18;
+    --bg-1:#171025;
+    --bg-2:#1E1730;
+    --ink-0:#F5F2FB;
+    --ink-1:#B6ADC9;
+    --ink-2:#5B5470;
+    --ink-muted:#83798F;
+    --line:rgba(255,255,255,0.08);
+    --glass-border:rgba(255,255,255,0.22);
+    --accent:#8B7CF6;
+    --accent-2:#5BE7C4;
+    --danger:#FF6B6B;
+    --amber:#FFB454;
+    --ok:#4ADE9C;
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:12px;
+    --safe-t:env(safe-area-inset-top,0px);
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px);
+    --safe-r:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background:var(--bg-0);
+    color:var(--ink-0);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    overscroll-behavior:none;
+    touch-action:pan-y;
+  }
+  body{
+    background:
+      radial-gradient(120% 60% at 15% -10%, rgba(139,124,246,0.28), transparent 60%),
+      radial-gradient(100% 50% at 100% 0%, rgba(91,231,196,0.14), transparent 55%),
+      var(--bg-0);
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  h1,h2,h3,.font-display{font-family:'Sora',system-ui,sans-serif;}
+  button{font-family:inherit; -webkit-appearance:none; appearance:none; border:none; background:none; color:inherit; cursor:pointer;}
+  button:active{transform:scale(0.97);}
+  button:disabled{opacity:0.4; pointer-events:none;}
+  ::selection{background:var(--accent); color:#fff;}
+  input[type=checkbox]{accent-color:var(--accent);}
+
+  .app-shell{
+    max-width:560px;
+    margin:0 auto;
+    min-height:100vh;
+    position:relative;
+    padding-left:var(--safe-l);
+    padding-right:var(--safe-r);
+  }
+  .screen{
+    display:none;
+    min-height:100vh;
+    padding-top:calc(var(--safe-t) + 18px);
+    padding-bottom:calc(var(--safe-b) + 28px);
+    animation:fadeIn .32s ease;
+  }
+  .screen.active{display:block;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  /* ---------- shared bits ---------- */
+  .px{padding-left:22px; padding-right:22px;}
+  .eyebrow{
+    font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-muted); font-weight:600;
+  }
+  .icon-btn{
+    width:44px; height:44px; border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,0.06);
+    border:1px solid var(--line);
+    color:var(--ink-0);
+    flex-shrink:0;
+  }
+  .icon-btn.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .pill{
+    padding:10px 16px; border-radius:100px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid var(--line);
+    font-size:14px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+
+  /* ---------- HOME ---------- */
+  .greeting-row{display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:22px;}
+  .greeting h1{font-size:26px; margin:4px 0 0; font-weight:700; letter-spacing:-.01em;}
+  .stat-strip{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:22px;
+  }
+  .stat-card{
+    background:linear-gradient(155deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+    border:1px solid var(--line); border-radius:var(--radius-md);
+    padding:16px 18px;
+  }
+  .stat-card .num{font-family:'Sora',sans-serif; font-size:28px; font-weight:700; line-height:1;}
+  .stat-card .lbl{font-size:12.5px; color:var(--ink-1); margin-top:6px;}
+  .stat-card.seen .num{color:var(--accent-2);}
+  .stat-card.remain .num{color:#FFB88C;}
+
+  .fotd-wrap{margin-bottom:20px;}
+  .section-label{font-size:13px; font-weight:700; color:var(--ink-1); margin:0 0 10px; display:flex; align-items:center; gap:8px;}
+  .fotd-card{
+    position:relative; border-radius:var(--radius-lg); padding:22px;
+    background:linear-gradient(150deg,#3A2E63,#241A3F);
+    border:1px solid rgba(255,255,255,0.1);
+    overflow:hidden; min-height:150px;
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .fotd-card .fotd-tag{font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent-2); background:rgba(91,231,196,0.12); padding:5px 10px; border-radius:100px; align-self:flex-start;}
+  .fotd-card .fotd-q{font-size:18px; font-weight:600; margin-top:14px; line-height:1.4;}
+  .fotd-card .fotd-hint{font-size:13px; color:var(--ink-1); margin-top:14px;}
+  .fotd-watermark{position:absolute; right:-10px; bottom:-24px; font-size:150px; font-family:'Sora',sans-serif; font-weight:800; color:rgba(255,255,255,0.05); line-height:1; pointer-events:none;}
+
+  .quick-row{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:22px;}
+  .quick-btn{
+    padding:16px; border-radius:var(--radius-md);
+    background:rgba(255,255,255,0.05); border:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+    text-align:left;
+  }
+  .quick-btn .qcount{font-family:'Sora'; font-size:20px; font-weight:700;}
+  .quick-btn .qlabel{font-size:12.5px; color:var(--ink-1);}
+
+  .cta-study{
+    width:100%; padding:19px; border-radius:20px;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7);
+    box-shadow:0 14px 30px -10px rgba(139,124,246,0.55);
+    font-size:16.5px; font-weight:700; color:#fff;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+
+  /* ---------- CONFIG MODAL ---------- */
+  .sheet-overlay{
+    position:fixed; inset:0; background:rgba(6,4,12,0.65); backdrop-filter:blur(3px);
+    display:none; align-items:flex-end; z-index:40;
+  }
+  .sheet-overlay.active{display:flex;}
+  .sheet{
+    width:100%; max-width:560px; margin:0 auto;
+    background:var(--bg-1); border:1px solid var(--line); border-bottom:none;
+    border-radius:28px 28px 0 0;
+    padding:14px 22px calc(24px + var(--safe-b));
+    animation:sheetUp .32s cubic-bezier(.2,.9,.25,1);
+    max-height:88vh; overflow-y:auto;
+  }
+  @keyframes sheetUp{from{transform:translateY(100%);} to{transform:translateY(0);}}
+  .sheet-handle{width:38px; height:4px; border-radius:4px; background:var(--line); margin:2px auto 16px;}
+  .subject-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:15px 16px; border-radius:16px; margin-bottom:10px;
+    background:rgba(255,255,255,0.04); border:1px solid var(--line);
+  }
+  .subject-row.checked{border-color:var(--accent); background:rgba(139,124,246,0.12);}
+  .subject-info{display:flex; align-items:center; gap:12px;}
+  .subject-dot{width:10px; height:10px; border-radius:50%;}
+  .subject-name{font-weight:600; font-size:15px;}
+  .subject-sub{font-size:12px; color:var(--ink-muted);}
+  .check-box{
+    width:24px; height:24px; border-radius:8px; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .subject-row.checked .check-box{background:var(--accent); border-color:var(--accent);}
+  .count-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0 22px;}
+  .count-btn{
+    padding:14px 0; border-radius:14px; text-align:center; font-weight:700; font-size:16px;
+    background:rgba(255,255,255,0.04); border:1.5px solid var(--line); color:var(--ink-1);
+  }
+  .count-btn.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .start-btn{
+    width:100%; padding:18px; border-radius:18px; font-weight:700; font-size:16px;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7); color:#fff;
+  }
+  .start-btn.disabled{opacity:.35; pointer-events:none;}
+
+  /* ---------- STUDY ---------- */
+  .study-topbar{
+    display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;
+  }
+  .progress-center{display:flex; flex-direction:column; align-items:center; gap:6px;}
+  .progress-num{font-family:'Sora'; font-size:14px; font-weight:700; letter-spacing:.02em;}
+  .progress-track{width:130px; height:4px; border-radius:4px; background:rgba(255,255,255,0.1); overflow:hidden;}
+  .progress-fill{height:100%; background:var(--accent-2); border-radius:4px; transition:width .3s ease;}
+
+  .card-stage{
+    position:relative; height:min(52vh,420px); margin:26px 0 18px;
+    perspective:1600px;
+  }
+  .card-flip{
+    position:absolute; inset:0; transform-style:preserve-3d;
+    transition:transform .55s cubic-bezier(.2,.85,.3,1);
+  }
+  .card-flip.flipped{transform:rotateY(180deg);}
+  .card-flip.slide-out-left{transform:translateX(-120%) rotate(-8deg); transition:transform .32s ease-in;}
+  .card-flip.slide-out-right{transform:translateX(120%) rotate(8deg); transition:transform .32s ease-in;}
+  .card-flip.slide-in{animation:slideIn .38s cubic-bezier(.2,.85,.3,1);}
+  @keyframes slideIn{from{transform:translateX(40px); opacity:0;} to{transform:translateX(0); opacity:1;}}
+
+  .card-face{
+    position:absolute; inset:0; border-radius:var(--radius-lg);
+    backface-visibility:hidden; -webkit-backface-visibility:hidden;
+    padding:22px; display:flex; flex-direction:column;
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    box-shadow:0 24px 50px -18px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.18);
+    overflow:hidden;
+  }
+  .card-face.back{transform:rotateY(180deg);}
+  .card-watermark{
+    position:absolute; right:-8px; bottom:-18px; font-size:220px; line-height:1;
+    color:rgba(255,255,255,0.14); pointer-events:none; user-select:none;
+    font-family:'Sora'; font-weight:800;
+  }
+  .card-watermark svg{width:190px; height:190px; opacity:.16; position:absolute; right:-14px; bottom:-10px;}
+  .card-top-row{display:flex; align-items:center; justify-content:space-between; position:relative; z-index:2;}
+  .card-subject-chip{
+    font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+    background:rgba(255,255,255,0.22); padding:6px 12px; border-radius:100px; color:#fff;
+  }
+  .card-body{
+    flex:1; display:flex; align-items:center; justify-content:center; text-align:center;
+    position:relative; z-index:2; padding:10px 4px;
+  }
+  .card-body p{font-size:clamp(19px,5vw,24px); font-weight:600; line-height:1.42; color:#fff; margin:0;}
+  .card-face.front{background:linear-gradient(155deg, var(--q-c1), var(--q-c2));}
+  .card-face.back{background:linear-gradient(155deg, var(--a-c1), var(--a-c2));}
+  .card-foot-hint{font-size:12px; text-align:center; color:rgba(255,255,255,0.75); position:relative; z-index:2; font-weight:500;}
+
+  /* streak levels for question faces */
+  .lvl-0{--q-c1:#FFB199; --q-c2:#FF7D6E;}
+  .lvl-1{--q-c1:#FF8A80; --q-c2:#F4511E;}
+  .lvl-2{--q-c1:#F4511E; --q-c2:#E23E57;}
+  .lvl-3{--q-c1:#E0356B; --q-c2:#B0204F;}
+  .lvl-4{--q-c1:#B0204F; --q-c2:#7A1042;}
+  .alt-a{--a-c1:#4FC3F7; --a-c2:#2E8B8B;}
+  .alt-b{--a-c1:#38BDF8; --a-c2:#22B07D;}
+
+  .timer-zone{margin-bottom:14px;}
+  .timer-track{width:100%; height:8px; border-radius:8px; background:rgba(255,255,255,0.08); overflow:hidden; margin-bottom:8px;}
+  .timer-fill{height:100%; border-radius:8px; background:linear-gradient(90deg,var(--accent-2),var(--accent)); width:100%; transition:width 1s linear;}
+  .timer-fill.warn{background:linear-gradient(90deg,#FFB454,#FF6B6B);}
+  .timer-label{display:flex; justify-content:space-between; font-size:12px; color:var(--ink-muted); font-weight:600;}
+
+  .show-answer-btn{
+    width:100%; padding:19px; border-radius:20px; font-size:16.5px; font-weight:700;
+    background:#171025; border:1px solid var(--line); color:#fff;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    box-shadow:0 16px 34px -14px rgba(0,0,0,0.6);
+  }
+  .feedback-row{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px;}
+  .fb-btn{
+    padding:14px 6px; border-radius:16px; text-align:center; border:1.5px solid;
+    background:rgba(255,255,255,0.04);
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+  .fb-btn .emo{font-size:22px;}
+  .fb-btn .lab{font-size:11.5px; font-weight:600; color:var(--ink-1);}
+  .fb-btn.clue{border-color:rgba(255,107,107,0.55);}
+  .fb-btn.almost{border-color:rgba(255,180,84,0.55);}
+  .fb-btn.got{border-color:rgba(74,222,156,0.55);}
+  .nav-row{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .ghost-btn{
+    padding:16px; border-radius:16px; font-weight:700; font-size:14.5px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line); color:var(--ink-0);
+  }
+  .next-btn{
+    padding:16px; border-radius:16px; font-weight:700; font-size:14.5px;
+    background:var(--accent); color:#fff;
+  }
+
+  /* ---------- LISTS ---------- */
+  .list-header{display:flex; align-items:center; gap:14px; margin-bottom:18px;}
+  .back-arrow{width:40px; height:40px; border-radius:12px; background:rgba(255,255,255,0.06); border:1px solid var(--line); display:flex; align-items:center; justify-content:center;}
+  .list-item{
+    padding:16px; border-radius:16px; background:rgba(255,255,255,0.04); border:1px solid var(--line);
+    margin-bottom:10px;
+  }
+  .list-item .li-top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+  .list-item .li-q{font-size:14.5px; font-weight:600; line-height:1.4; flex:1;}
+  .li-tag{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:4px 9px; border-radius:100px; flex-shrink:0;}
+  .li-a{font-size:13px; color:var(--ink-1); margin-top:8px; display:none; line-height:1.4;}
+  .list-item.open .li-a{display:block;}
+  .empty-state{text-align:center; padding:60px 20px; color:var(--ink-muted);}
+  .empty-state .ee-icon{font-size:38px; margin-bottom:10px;}
+
+  /* toast */
+  .toast{
+    position:fixed; left:50%; bottom:calc(28px + var(--safe-b)); transform:translateX(-50%) translateY(20px);
+    background:#211936; border:1px solid var(--line); padding:13px 20px; border-radius:100px;
+    font-size:13.5px; font-weight:600; opacity:0; pointer-events:none; transition:all .3s ease;
+    z-index:60; box-shadow:0 14px 30px -10px rgba(0,0,0,0.6); white-space:nowrap;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .subj-Medicine{background:#EF4444;}
+  .subj-Pharmacology{background:#F59E0B;}
+  .subj-ObsGynae{background:#EC4899;}
+  .tag-Medicine{background:rgba(239,68,68,0.16); color:#FF9B9B;}
+  .tag-Pharmacology{background:rgba(245,158,11,0.16); color:#FFCB7D;}
+  .tag-ObsGynae{background:rgba(236,72,153,0.16); color:#FF9FCB;}
+  .subj-Generated{background:#8B7CF6;}
+  .tag-Generated{background:rgba(139,124,246,0.16); color:#C9BFFF;}
+
+  /* =====================================================================
+     AUTH / LANDING
+     ===================================================================== */
+  #screen-auth{
+    display:none; min-height:100vh; position:relative;
+    align-items:center; justify-content:center; flex-direction:column;
+    padding:calc(var(--safe-t) + 32px) 26px calc(var(--safe-b) + 32px);
+  }
+  #screen-auth.active{display:flex;}
+  .auth-wrap{width:100%; max-width:400px; margin:0 auto; text-align:center;}
+  .auth-mark{
+    width:64px; height:64px; border-radius:20px; margin:0 auto 22px;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 18px 40px -14px rgba(139,124,246,0.65);
+  }
+  .auth-title{font-size:28px; font-weight:800; letter-spacing:-.01em; margin:0 0 8px;}
+  .auth-sub{font-size:14.5px; color:var(--ink-1); margin:0 0 34px; line-height:1.5;}
+  .auth-card{
+    background:linear-gradient(155deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border:1px solid var(--line); border-radius:var(--radius-lg);
+    padding:24px; text-align:left;
+  }
+  .auth-field{margin-bottom:12px;}
+  .auth-field label{display:block; font-size:12px; font-weight:700; color:var(--ink-1); margin-bottom:7px; letter-spacing:.02em;}
+  .auth-field input{
+    width:100%; padding:14px 15px; border-radius:14px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line);
+    color:var(--ink-0); font-size:14.5px; font-family:inherit;
+  }
+  .auth-field input:focus{outline:none; border-color:var(--accent);}
+  .auth-primary-btn{
+    width:100%; padding:16px; border-radius:15px; font-weight:700; font-size:15px; color:#fff;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7); margin-top:6px;
+    box-shadow:0 14px 30px -12px rgba(139,124,246,0.55);
+  }
+  .auth-divider{display:flex; align-items:center; gap:12px; margin:18px 0; color:var(--ink-muted); font-size:12px; font-weight:600;}
+  .auth-divider::before,.auth-divider::after{content:""; flex:1; height:1px; background:var(--line);}
+  .auth-google-btn{
+    width:100%; padding:14px; border-radius:15px; font-weight:700; font-size:14.5px;
+    background:#fff; color:#1F1B2B; display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .auth-switch{text-align:center; font-size:13.5px; color:var(--ink-1); margin-top:18px;}
+  .auth-switch button{color:var(--accent-2); font-weight:700;}
+  .auth-error{
+    background:rgba(255,107,107,0.12); border:1px solid rgba(255,107,107,0.35); color:#FF9B9B;
+    padding:11px 14px; border-radius:12px; font-size:13px; margin-bottom:14px; display:none; line-height:1.4;
+  }
+  .auth-error.show{display:block;}
+  .auth-footnote{font-size:11.5px; color:var(--ink-muted); margin-top:26px; line-height:1.5;}
+
+  /* ---------- HOME header account controls ---------- */
+  .header-actions{display:flex; align-items:center; gap:8px;}
+  .avatar-btn{
+    width:44px; height:44px; border-radius:14px; overflow:hidden; flex-shrink:0;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7);
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; font-size:15px;
+  }
+  .avatar-btn img{width:100%; height:100%; object-fit:cover;}
+
+  /* ---------- GENERATE card + sheet ---------- */
+  .generate-card{
+    position:relative; overflow:hidden; border-radius:var(--radius-lg); padding:22px;
+    background:linear-gradient(150deg,#20304A,#161B2E);
+    border:1px solid rgba(255,255,255,0.1); margin-bottom:22px;
+    display:flex; align-items:center; gap:16px; text-align:left; width:100%;
+  }
+  .generate-card .gc-icon{
+    width:50px; height:50px; border-radius:15px; flex-shrink:0;
+    background:rgba(91,231,196,0.16); color:var(--accent-2);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .generate-card .gc-title{font-size:15.5px; font-weight:700; margin:0 0 3px;}
+  .generate-card .gc-sub{font-size:12.5px; color:var(--ink-1); margin:0;}
+
+  .dropzone{
+    border:1.5px dashed var(--line); border-radius:20px; padding:32px 18px;
+    text-align:center; background:rgba(255,255,255,0.03); transition:all .2s ease;
+    cursor:pointer;
+  }
+  .dropzone.drag{border-color:var(--accent); background:rgba(139,124,246,0.1);}
+  .dropzone .dz-icon{
+    width:52px; height:52px; border-radius:16px; margin:0 auto 14px;
+    background:rgba(139,124,246,0.14); color:var(--accent);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .dropzone .dz-title{font-weight:700; font-size:15px; margin-bottom:5px;}
+  .dropzone .dz-sub{font-size:12.5px; color:var(--ink-muted); line-height:1.5;}
+  .dropzone input[type=file]{display:none;}
+  .page-warning{
+    display:flex; gap:10px; align-items:flex-start; margin-top:14px; padding:12px 14px;
+    border-radius:14px; background:rgba(255,180,84,0.1); border:1px solid rgba(255,180,84,0.35);
+    color:#FFCB86; font-size:12.5px; line-height:1.5;
+  }
+  .file-chip{
+    display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:16px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line); margin-top:14px;
+  }
+  .file-chip .fc-icon{
+    width:38px; height:38px; border-radius:11px; background:rgba(255,107,107,0.15); color:#FF9B9B;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .file-chip .fc-name{font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .file-chip .fc-meta{font-size:11.5px; color:var(--ink-muted); margin-top:2px;}
+  .file-chip .fc-remove{margin-left:auto; color:var(--ink-muted); flex-shrink:0;}
+
+  .generate-btn{
+    width:100%; padding:18px; border-radius:18px; font-weight:700; font-size:15.5px; color:#fff;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7); margin-top:16px;
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .generate-btn.disabled{opacity:.35; pointer-events:none;}
+  .generate-btn.busy{pointer-events:none;}
+
+  .pipeline-status{margin-top:16px; display:none;}
+  .pipeline-status.show{display:block;}
+  .pipeline-row{display:flex; align-items:center; gap:12px; padding:9px 0; font-size:13.5px; color:var(--ink-muted);}
+  .pipeline-row.active{color:var(--ink-0); font-weight:600;}
+  .pipeline-row.done{color:var(--accent-2);}
+  .pipeline-dot{
+    width:20px; height:20px; border-radius:50%; flex-shrink:0; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .pipeline-row.active .pipeline-dot{border-color:var(--accent); border-top-color:transparent; animation:spin .7s linear infinite;}
+  .pipeline-row.done .pipeline-dot{background:var(--accent-2); border-color:var(--accent-2);}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .settings-field{margin-bottom:8px;}
+  .settings-field label{display:block; font-size:12px; font-weight:700; color:var(--ink-1); margin-bottom:7px;}
+  .settings-field input{
+    width:100%; padding:14px 15px; border-radius:14px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line);
+    color:var(--ink-0); font-size:14px; font-family:'Sora',monospace;
+  }
+  .settings-field input:focus{outline:none; border-color:var(--accent);}
+  .settings-hint{font-size:12px; color:var(--ink-muted); margin:8px 0 18px; line-height:1.5;}
+  .settings-hint a{color:var(--accent-2);}
+  .settings-save-btn{
+    width:100%; padding:16px; border-radius:15px; font-weight:700; font-size:14.5px; color:#fff;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7);
+  }
+  .logout-row{
+    display:flex; align-items:center; justify-content:space-between; padding:14px 4px 4px;
+    border-top:1px solid var(--line); margin-top:18px;
+  }
+  .logout-row .lr-email{font-size:12.5px; color:var(--ink-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px;}
+  .logout-row button{font-size:13px; font-weight:700; color:var(--danger);}
+
+  /* ---------- success overlay ---------- */
+  .success-overlay{
+    position:fixed; inset:0; background:rgba(6,4,12,0.72); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:80; padding:30px;
+  }
+  .success-overlay.show{display:flex;}
+  .success-card{
+    background:var(--bg-1); border:1px solid var(--line); border-radius:26px;
+    padding:34px 26px; text-align:center; max-width:340px; width:100%;
+    animation:successPop .42s cubic-bezier(.2,.9,.25,1);
+  }
+  @keyframes successPop{
+    0%{transform:scale(.75); opacity:0;}
+    60%{transform:scale(1.04); opacity:1;}
+    100%{transform:scale(1);}
+  }
+  .success-ring{
+    width:74px; height:74px; border-radius:50%; margin:0 auto 20px;
+    background:rgba(74,222,156,0.14); display:flex; align-items:center; justify-content:center;
+    color:var(--ok);
+  }
+  .success-ring svg{stroke-dasharray:40; stroke-dashoffset:40; animation:drawCheck .5s .15s ease forwards;}
+  @keyframes drawCheck{to{stroke-dashoffset:0;}}
+  .success-title{font-size:17.5px; font-weight:700; margin:0 0 8px;}
+  .success-sub{font-size:13.5px; color:var(--ink-1); line-height:1.5; margin:0 0 22px;}
+  .success-close-btn{
+    width:100%; padding:15px; border-radius:15px; font-weight:700; font-size:14.5px; color:#fff;
+    background:linear-gradient(135deg,var(--accent),#6C5CE7);
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== AUTH / LANDING ===================== -->
+<section id="screen-auth">
+  <div class="auth-wrap">
+    <div class="auth-mark">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    </div>
+    <h1 class="auth-title">Recall</h1>
+    <p class="auth-sub">Sign in to sync your flashcard progress and generate new decks from your own study PDFs.</p>
+
+    <div class="auth-card">
+      <div class="auth-error" id="auth-error"></div>
+
+      <button class="auth-google-btn" onclick="signInWithGoogle()">
+        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.85.86-3.04.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.71A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.71V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.96l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+        Continue with Google
+      </button>
+
+      <div class="auth-divider">or</div>
+
+      <div class="auth-field">
+        <label>Email</label>
+        <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="auth-field">
+        <label>Password</label>
+        <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="auth-primary-btn" id="auth-submit-btn" onclick="submitEmailAuth()">Log in</button>
+
+      <div class="auth-switch">
+        <span id="auth-switch-text">New here?</span>
+        <button onclick="toggleAuthMode()" id="auth-switch-btn">Create an account</button>
+      </div>
+    </div>
+
+    <p class="auth-footnote">Authentication is handled by Firebase Auth. Your Gemini API key (used for flashcard generation) is stored only in this device's local storage — it is never sent to our servers.</p>
+  </div>
+</section>
+
+<div class="app-shell" id="app" style="display:none;">
+
+  <!-- ===================== HOME ===================== -->
+  <section class="screen active" id="screen-home">
+    <div class="px">
+      <div class="greeting-row">
+        <div class="greeting">
+          <div class="eyebrow" id="home-date">—</div>
+          <h1 id="home-greeting">Hey there 👋</h1>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" onclick="openSettings()" aria-label="Developer settings">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+          <button class="avatar-btn" id="avatar-btn" onclick="openSettings()" aria-label="Account">?</button>
+        </div>
+      </div>
+
+      <div class="stat-strip">
+        <div class="stat-card seen">
+          <div class="num" id="stat-seen">0</div>
+          <div class="lbl">Flashcards seen till date</div>
+        </div>
+        <div class="stat-card remain">
+          <div class="num" id="stat-remain">0</div>
+          <div class="lbl">Cards remaining to master</div>
+        </div>
+      </div>
+
+      <button class="generate-card" onclick="openGenerate()">
+        <span class="gc-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 2l3 3M12 2 9 5"/><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 15h10M7 18h6"/></svg>
+        </span>
+        <span>
+          <div class="gc-title">Generate from a PDF</div>
+          <p class="gc-sub">Turn a study PDF into 100 high-yield flashcards, automatically.</p>
+        </span>
+      </button>
+
+      <div class="fotd-wrap">
+        <div class="section-label">✨ Flashcard of the day</div>
+        <div class="fotd-card" id="fotd-card">
+          <div class="fotd-watermark">?</div>
+          <span class="fotd-tag" id="fotd-subject">Subject</span>
+          <p class="fotd-q" id="fotd-text">Loading…</p>
+          <span class="fotd-hint" id="fotd-hint">Tap to reveal answer</span>
+        </div>
+      </div>
+
+      <div class="quick-row">
+        <button class="quick-btn" onclick="openList('bookmarks')">
+          <span class="qcount" id="count-bookmarks">0</span>
+          <span class="qlabel">🔖 Bookmarked cards</span>
+        </button>
+        <button class="quick-btn" onclick="openList('mastered')">
+          <span class="qcount" id="count-mastered">0</span>
+          <span class="qlabel">🏆 Mastered cards</span>
+        </button>
+      </div>
+
+      <button class="cta-study" onclick="openConfig()">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Study flashcards
+      </button>
+    </div>
+  </section>
+
+  <!-- ===================== STUDY SESSION ===================== -->
+  <section class="screen" id="screen-study">
+    <div class="px">
+      <div class="study-topbar">
+        <button class="icon-btn" id="bookmark-toggle" onclick="toggleBookmarkCurrent()" aria-label="Bookmark">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <div class="progress-center">
+          <div class="progress-num" id="study-progress-num">01/10</div>
+          <div class="progress-track"><div class="progress-fill" id="study-progress-fill" style="width:0%"></div></div>
+        </div>
+        <button class="icon-btn" onclick="exitSession()" aria-label="Exit session">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="card-stage" id="card-stage">
+        <div class="card-flip" id="card-flip">
+          <div class="card-face front lvl-0" id="card-front">
+            <div class="card-watermark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9.09 9a3 3 0 1 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <div class="card-top-row">
+              <span class="card-subject-chip" id="card-subject-front">Medicine</span>
+              <span class="pill" id="card-streak-front" style="padding:6px 12px; font-size:11.5px;">Streak 0</span>
+            </div>
+            <div class="card-body"><p id="card-question-text">Question text</p></div>
+            <div class="card-foot-hint">Tap “Show Answer” when ready</div>
+          </div>
+          <div class="card-face back alt-a" id="card-back">
+            <div class="card-watermark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.47c.53.5.9 1.18 1 1.9l.1.63h5.8l.1-.63c.1-.72.47-1.4 1-1.9A6 6 0 0 0 12 3z"/></svg>
+            </div>
+            <div class="card-top-row">
+              <span class="card-subject-chip" id="card-subject-back">Medicine</span>
+              <span class="pill" style="padding:6px 12px; font-size:11.5px;">Answer</span>
+            </div>
+            <div class="card-body"><p id="card-answer-text">Answer text</p></div>
+            <div class="card-foot-hint">How well did you recall it?</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- question-state controls -->
+      <div id="controls-question">
+        <div class="timer-zone">
+          <div class="timer-track"><div class="timer-fill" id="timer-fill" style="width:100%"></div></div>
+          <div class="timer-label"><span id="timer-seconds">40s left</span><span>Auto-reveals at 0:00</span></div>
+        </div>
+        <button class="show-answer-btn" onclick="showAnswer()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.47c.53.5.9 1.18 1 1.9l.1.63h5.8l.1-.63c.1-.72.47-1.4 1-1.9A6 6 0 0 0 12 3z"/></svg>
+          Show Answer
+        </button>
+      </div>
+
+      <!-- answer-state controls -->
+      <div id="controls-answer" style="display:none;">
+        <div class="feedback-row">
+          <button class="fb-btn clue" onclick="submitFeedback('clue', event)">
+            <span class="emo">🧐</span><span class="lab">Had no Clue!</span>
+          </button>
+          <button class="fb-btn almost" onclick="submitFeedback('almost', event)">
+            <span class="emo">😅</span><span class="lab">Almost there</span>
+          </button>
+          <button class="fb-btn got" onclick="submitFeedback('got', event)">
+            <span class="emo">🤩</span><span class="lab">Got it!</span>
+          </button>
+        </div>
+        <div class="nav-row">
+          <button class="ghost-btn" onclick="showQuestion()">↺ Show Question</button>
+          <button class="next-btn" id="next-btn" onclick="nextCard()" disabled>Next →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LIST (bookmarks / mastered) ===================== -->
+  <section class="screen" id="screen-list">
+    <div class="px">
+      <div class="list-header">
+        <button class="back-arrow" onclick="showScreen('screen-home')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h2 id="list-title" style="margin:0; font-size:19px;">Bookmarks</h2>
+      </div>
+      <div id="list-content"></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ===================== CONFIG SHEET ===================== -->
+<div class="sheet-overlay" id="config-overlay" onclick="closeConfigIfBackdrop(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 style="margin:0 0 4px; font-size:20px;">Build your session</h2>
+    <p style="margin:0 0 18px; font-size:13.5px; color:var(--ink-1);">Pick subjects and how many cards you want to review.</p>
+
+    <div id="subject-list"></div>
+
+    <div class="section-label" style="margin-top:6px;">Session length</div>
+    <div class="count-grid" id="count-grid">
+      <button class="count-btn" data-count="10" onclick="pickCount(10)">10</button>
+      <button class="count-btn active" data-count="20" onclick="pickCount(20)">20</button>
+      <button class="count-btn" data-count="30" onclick="pickCount(30)">30</button>
+      <button class="count-btn" data-count="40" onclick="pickCount(40)">40</button>
+    </div>
+
+    <button class="start-btn" id="start-session-btn" onclick="startSession()">Start Session</button>
+  </div>
+</div>
+
+<!-- ===================== GENERATE FROM PDF SHEET ===================== -->
+<div class="sheet-overlay" id="generate-overlay" onclick="closeGenerateIfBackdrop(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 style="margin:0 0 4px; font-size:20px;">Generate from a PDF</h2>
+    <p style="margin:0 0 18px; font-size:13.5px; color:var(--ink-1);">Upload a medical study PDF and Gemini will extract 100 high-yield flashcards for you.</p>
+
+    <div id="gen-error" class="auth-error"></div>
+
+    <div id="dropzone" class="dropzone"
+         onclick="document.getElementById('pdf-file-input').click()"
+         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+      <div class="dz-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4l4 4M12 4 8 8"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      </div>
+      <div class="dz-title">Drop your PDF here</div>
+      <div class="dz-sub">or tap to browse · .pdf only · max 300 pages</div>
+      <input type="file" id="pdf-file-input" accept="application/pdf,.pdf" onchange="handleFileSelect(event)">
+    </div>
+
+    <div id="file-chip-wrap"></div>
+    <div id="page-warning-wrap"></div>
+
+    <div class="pipeline-status" id="pipeline-status">
+      <div class="pipeline-row" id="pl-row-read">
+        <span class="pipeline-dot"></span> Reading PDF locally
+      </div>
+      <div class="pipeline-row" id="pl-row-send">
+        <span class="pipeline-dot"></span> Sending to Gemini 1.5 Flash
+      </div>
+      <div class="pipeline-row" id="pl-row-parse">
+        <span class="pipeline-dot"></span> Parsing high-yield flashcards
+      </div>
+      <div class="pipeline-row" id="pl-row-save">
+        <span class="pipeline-dot"></span> Syncing to your deck
+      </div>
+    </div>
+
+    <button class="generate-btn disabled" id="generate-submit-btn" onclick="runGenerationPipeline()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 2l3 3M12 2 9 5"/><rect x="3" y="10" width="18" height="11" rx="2"/></svg>
+      Generate 100 flashcards
+    </button>
+  </div>
+</div>
+
+<!-- ===================== DEVELOPER SETTINGS SHEET ===================== -->
+<div class="sheet-overlay" id="settings-overlay" onclick="closeSettingsIfBackdrop(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 style="margin:0 0 4px; font-size:20px;">Developer settings</h2>
+    <p style="margin:0 0 18px; font-size:13.5px; color:var(--ink-1);">Your API key lives only on this device.</p>
+
+    <div class="settings-field">
+      <label>Enter Gemini API Key (stored securely inside local device memory)</label>
+      <input type="password" id="gemini-key-input" placeholder="AIza…">
+    </div>
+    <p class="settings-hint">Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>. It's saved to this browser's local storage and read only when generating flashcards — it is never sent anywhere but Google's API.</p>
+    <button class="settings-save-btn" onclick="saveGeminiKey()">Save key</button>
+
+    <div class="logout-row">
+      <span class="lr-email" id="settings-user-email">—</span>
+      <button onclick="resetProgressPrompt()" style="color:var(--ink-1); margin-right:14px;">Reset progress</button>
+      <button onclick="signOutUser()">Log out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SUCCESS OVERLAY ===================== -->
+<div class="success-overlay" id="success-overlay">
+  <div class="success-card">
+    <div class="success-ring">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+    </div>
+    <div class="success-title">Deck synced!</div>
+    <p class="success-sub" id="success-message">100 High-Yield Flashcards successfully generated and synced to your deck!</p>
+    <button class="success-close-btn" onclick="closeSuccessOverlay()">Start studying</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================================
+   FLASHCARD DATA — replace / extend this array with your own content.
+   Schema: { id, subject, question, answer, streak, mastered, bookmarked }
+   ========================================================================= */
+const FLASHCARD_DATA = [
+  // ---- Obs & Gynae ----
+  {
+    id: 37,
+    subject: "Obs & Gynae",
+    question: "What is the normal anatomical position of the uterus?",
+    answer: "Anteflexed (120° angle between uterus and cervix) and anteverted (90° angle between vagina and cervix).[span_0](start_span)[span_0](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 38,
+    subject: "Obs & Gynae",
+    question: "Which ligament primarily keeps the uterus in an anteverted position, and which prevents retroversion?",
+    answer: "The Round ligament keeps it anteverted, while the Uterosacral ligament prevents retroversion.[span_1](start_span)[span_1](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 39,
+    subject: "Obs & Gynae",
+    question: "What is the fluid deficit threshold to stop a hysteroscopy when using electrolyte-rich media (like Normal Saline)?",
+    answer: "2500 mL fluid deficit.[span_2](start_span)[span_2](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 40,
+    subject: "Obs & Gynae",
+    question: "What is the most common site of ureteric injury during a hysterectomy?",
+    answer: "Approximately 2 cm lateral to the internal os (where the uterine artery crosses the ureter).[span_3](start_span)[span_3](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 41,
+    subject: "Obs & Gynae",
+    question: "According to De Lancey's Levels of Support, a defect in Level 1 (uterosacral & cardinal ligaments) leads to what?",
+    answer: "Apical prolapse, vault prolapse, cervical elongation, or enterocele.[span_4](start_span)[span_4](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 42,
+    subject: "Obs & Gynae",
+    question: "What is the narrowest part of the fallopian tube and its anatomical sphincter?",
+    answer: "The Interstitium.[span_5](start_span)[span_5](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 43,
+    subject: "Obs & Gynae",
+    question: "What is the most common site for fertilization, ectopic pregnancy, and genital TB in the fallopian tube?",
+    answer: "The Ampulla.[span_6](start_span)[span_6](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 44,
+    subject: "Obs & Gynae",
+    question: "Which Mullerian malformation is associated with the best reproductive outcome, and which has the worst?",
+    answer: "Arcuate uterus has the best outcome; Septate uterus has the worst outcome.[span_7](start_span)[span_7](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 45,
+    subject: "Obs & Gynae",
+    question: "What is the investigation of choice (IOC) and gold standard for diagnosing a vesicovaginal fistula (VVF)?",
+    answer: "IOC is the methylene blue 3-swab test; Gold standard is cystoscopy.[span_8](start_span)[span_8](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 46,
+    subject: "Obs & Gynae",
+    question: "What defines precocious puberty in females?",
+    answer: "Thelarche (breast development) occurring before 8 years of age.[span_9](start_span)[span_9](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 47,
+    subject: "Obs & Gynae",
+    question: "In the menstrual cycle, what hormonal event directly triggers ovulation?",
+    answer: "The LH surge (initiated by estrogen levels ≥ 200 pg for 48 hours).[span_10](start_span)[span_10](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 48,
+    subject: "Obs & Gynae",
+    question: "What are the first-line medical treatments for Abnormal Uterine Bleeding (AUB)?",
+    answer: "1. Tranexamic acid, 2. OCPs, 3. Progesterone (Oral/Mirena).[span_11](start_span)[span_11](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 49,
+    subject: "Obs & Gynae",
+    question: "What is the classic 'Rotterdam Criteria' for diagnosing PCOS?",
+    answer: "Requires 2 of 3: 1. Clinical/biochemical hyperandrogenism, 2. Ovulatory dysfunction (oligo/amenorrhea), 3. Polycystic ovaries on USG.[span_12](start_span)[span_12](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 50,
+    subject: "Obs & Gynae",
+    question: "What is the drug of choice for ovulation induction in PCOS patients?",
+    answer: "Letrozole.[span_13](start_span)[span_13](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 51,
+    subject: "Obs & Gynae",
+    question: "What is the most common cause of ambiguous genitalia in female newborns?",
+    answer: "Congenital Adrenal Hyperplasia (CAH), specifically 21-alpha-hydroxylase deficiency.[span_14](start_span)[span_14](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 52,
+    subject: "Obs & Gynae",
+    question: "A patient presents with primary amenorrhea, absent uterus, absent pubic hair, and testes. What is the diagnosis?",
+    answer: "Complete Androgen Insensitivity Syndrome (46 XY).[span_15](start_span)[span_15](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 53,
+    subject: "Obs & Gynae",
+    question: "What is the most common site for endometriosis?",
+    answer: "The ovary (forming a chocolate cyst/endometrioma).[span_16](start_span)[span_16](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 54,
+    subject: "Obs & Gynae",
+    question: "What is the classic triad of symptoms for an unruptured ectopic pregnancy?",
+    answer: "Amenorrhea (6-10 weeks), lower abdominal pain, and vaginal bleeding.[span_17](start_span)[span_17](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 55,
+    subject: "Obs & Gynae",
+    question: "What is the standard recommended dose of Folic Acid during pregnancy to prevent neural tube defects?",
+    answer: "400 mcg/day, starting 1 month before conception till 3 months after.[span_18](start_span)[span_18](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 56,
+    subject: "Obs & Gynae",
+    question: "What defines Severe Pre-eclampsia?",
+    answer: "BP ≥ 160/110 mmHg, or signs of end-organ damage (platelets < 1 lakh, raised liver enzymes, Cr ≥ 1.1), or signs of impending eclampsia.[span_19](start_span)[span_19](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+
+  // ---- Medicine ----
+  {
+    id: 57,
+    subject: "Medicine",
+    question: "What visual field defect is classically caused by a pituitary macroadenoma compressing the optic chiasm?",
+    answer: "Bitemporal heteronymous hemianopia.[span_20](start_span)[span_20](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 58,
+    subject: "Medicine",
+    question: "What is the most common functional pituitary tumor, and what is its medical treatment of choice?",
+    answer: "Prolactinoma. The DOC is Cabergoline (a dopamine agonist).[span_21](start_span)[span_21](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 59,
+    subject: "Medicine",
+    question: "What are the classic diagnostic criteria for Syndrome of Inappropriate ADH Secretion (SIADH)?",
+    answer: "Decreased serum osmolality, increased urine osmolality, euvolemia, and urinary Na > 40 mEq/L.[span_22](start_span)[span_22](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 60,
+    subject: "Medicine",
+    question: "What is the most common cause of endocrine hypertension?",
+    answer: "Primary Hyperaldosteronism.[span_23](start_span)[span_23](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 61,
+    subject: "Medicine",
+    question: "In Addison's disease (Primary Adrenal Insufficiency), what happens to Cortisol, ACTH, and Potassium levels?",
+    answer: "Cortisol is low, ACTH is high (causing hyperpigmentation), and Potassium is high (hyperkalemia).[span_24](start_span)[span_24](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 62,
+    subject: "Medicine",
+    question: "What is the classic clinical triad of Pheochromocytoma?",
+    answer: "Episodic headache (most common), perspiration, and palpitations/tachycardia.[span_25](start_span)[span_25](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 63,
+    subject: "Medicine",
+    question: "What is the defining mutation in Multiple Endocrine Neoplasia Type 2A (MEN 2A)?",
+    answer: "RET proto-oncogene mutation on Chromosome 10q.[span_26](start_span)[span_26](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 64,
+    subject: "Medicine",
+    question: "What is the diagnostic fluid deficit and electrolyte profile in Diabetic Ketoacidosis (DKA)?",
+    answer: "Volume deficit of 6-9 L, plasma glucose 250-600 mg/dL, positive plasma ketones, and metabolic acidosis (pH 6.8-7.3).[span_27](start_span)[span_27](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 65,
+    subject: "Medicine",
+    question: "What is the target HbA1c for optimal metabolic control in diabetes?",
+    answer: "< 6.5%.[span_28](start_span)[span_28](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 66,
+    subject: "Medicine",
+    question: "Which autoantibody is the most specific and sensitive marker for Type 1 Diabetes Mellitus?",
+    answer: "Glutamic acid decarboxylase (GAD65) antibodies.[span_29](start_span)[span_29](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 67,
+    subject: "Medicine",
+    question: "What is the formula for corrected serum calcium?",
+    answer: "Serum calcium (S. Ca2+) + 0.8 x (4 - S. albumin).[span_30](start_span)[span_30](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 68,
+    subject: "Medicine",
+    question: "What is the most common cause of heart failure with reduced ejection fraction (HFrEF)?",
+    answer: "Ischemic cardiomyopathy (Post-MI).[span_31](start_span)[span_31](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 69,
+    subject: "Medicine",
+    question: "What is the most common genetic cardiovascular disease and leading cause of sudden cardiac death in young athletes?",
+    answer: "Hypertrophic Cardiomyopathy (HCM).[span_32](start_span)[span_32](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 70,
+    subject: "Medicine",
+    question: "What is Beck's triad for Cardiac Tamponade?",
+    answer: "Hypotension, muffled heart sounds, and elevated JVP.[span_33](start_span)[span_33](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 71,
+    subject: "Medicine",
+    question: "What is 'Pulsus parvus et tardus' and in what condition is it seen?",
+    answer: "A pulse with a slow upstroke and low amplitude, classically seen in severe Aortic Stenosis.[span_34](start_span)[span_34](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 72,
+    subject: "Medicine",
+    question: "Which ECG leads indicate an Inferior Wall Myocardial Infarction (IWMI), and which artery is typically occluded?",
+    answer: "Leads II, III, and aVF. The Right Coronary Artery (RCA) is typically occluded.[span_35](start_span)[span_35](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 73,
+    subject: "Medicine",
+    question: "What is the most common extraintestinal manifestation of Ulcerative Colitis?",
+    answer: "Primary Sclerosing Cholangitis (PSC).[span_36](start_span)[span_36](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 74,
+    subject: "Medicine",
+    question: "What is the classic serological profile for Acute Hepatitis B?",
+    answer: "HBsAg positive and Anti-HBc IgM positive.[span_37](start_span)[span_37](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 75,
+    subject: "Medicine",
+    question: "What are the classic symptoms of Parkinson's disease?",
+    answer: "Resting tremor (pill-rolling), rigidity (cogwheel/lead pipe), akinesia/bradykinesia, and postural instability.[span_38](start_span)[span_38](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 76,
+    subject: "Medicine",
+    question: "In stroke localization, a lesion in the Middle Cerebral Artery (MCA) typically presents with what findings?",
+    answer: "Contralateral hemiplegia (face and arm predominant), homonymous hemianopia, and global aphasia (if in the dominant hemisphere).[span_39](start_span)[span_39](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+
+  // ---- Pharmacology ----
+  {
+    id: 77,
+    subject: "Pharmacology",
+    question: "Name three drugs that follow Zero-Order Kinetics of elimination.",
+    answer: "Alcohol, Phenytoin, and Warfarin (Constant amount eliminated per unit time).[span_40](start_span)[span_40](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 78,
+    subject: "Pharmacology",
+    question: "What is the specific antidote for Benzodiazepine toxicity?",
+    answer: "Flumazenil.[span_41](start_span)[span_41](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 79,
+    subject: "Pharmacology",
+    question: "Which enzyme is the most abundantly expressed cytochrome P450 isoform in the liver?",
+    answer: "CYP3A4.[span_42](start_span)[span_42](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 80,
+    subject: "Pharmacology",
+    question: "What is the drug of choice for treating Alzheimer's disease dementia?",
+    answer: "Donepezil (a centrally acting reversible acetylcholinesterase inhibitor).[span_43](start_span)[span_43](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 81,
+    subject: "Pharmacology",
+    question: "What is the standard reversal agent (antidote) for non-depolarizing muscle relaxants?",
+    answer: "Neostigmine, typically given with Atropine or Glycopyrrolate to prevent muscarinic side effects.[span_44](start_span)[span_44](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 82,
+    subject: "Pharmacology",
+    question: "Which alpha-blocker is the drug of choice for controlling pre-operative hypertension in Pheochromocytoma?",
+    answer: "Phenoxybenzamine.[span_45](start_span)[span_45](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 83,
+    subject: "Pharmacology",
+    question: "What is the drug of choice for Acute Narrow-Angle Glaucoma?",
+    answer: "Intravenous Acetazolamide or Mannitol, followed by Pilocarpine.[span_46](start_span)[span_46](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 84,
+    subject: "Pharmacology",
+    question: "What is the primary acute treatment for Supraventricular Tachycardia (SVT)?",
+    answer: "Intravenous Adenosine (rapid push).[span_47](start_span)[span_47](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 85,
+    subject: "Pharmacology",
+    question: "Which anti-arrhythmic drug classically causes pulmonary fibrosis, thyroid dysfunction, and corneal microdeposits?",
+    answer: "Amiodarone.[span_48](start_span)[span_48](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 86,
+    subject: "Pharmacology",
+    question: "What is the mechanism of action of statins?",
+    answer: "They are competitive inhibitors of HMG-CoA reductase, decreasing cholesterol synthesis and upregulating LDL receptors.[span_49](start_span)[span_49](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 87,
+    subject: "Pharmacology",
+    question: "Which loop diuretic is the most ototoxic?",
+    answer: "Ethacrynic acid.[span_50](start_span)[span_50](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 88,
+    subject: "Pharmacology",
+    question: "What is the drug of choice for Absence Seizures?",
+    answer: "Ethosuximide (or Valproate).[span_51](start_span)[span_51](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 89,
+    subject: "Pharmacology",
+    question: "What is the primary antidote for acetaminophen (paracetamol) poisoning?",
+    answer: "N-acetylcysteine (replenishes glutathione to neutralize the NAPQI metabolite).[span_52](start_span)[span_52](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 90,
+    subject: "Pharmacology",
+    question: "What is the mechanism of action of Vancomycin?",
+    answer: "Binds to the D-Ala-D-Ala terminus of nascent peptidoglycan, inhibiting bacterial cell wall polymerization.[span_53](start_span)[span_53](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 91,
+    subject: "Pharmacology",
+    question: "Which class of antibiotics is absolutely contraindicated in pregnancy because it causes bone growth defects and yellowing of teeth?",
+    answer: "Tetracyclines.[span_54](start_span)[span_54](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 92,
+    subject: "Pharmacology",
+    question: "Which anti-tubercular drug is most notorious for causing optic neuritis (red-green color blindness)?",
+    answer: "Ethambutol.[span_55](start_span)[span_55](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 93,
+    subject: "Pharmacology",
+    question: "What is the mechanism of action and primary clinical use of Methotrexate?",
+    answer: "It inhibits dihydrofolate reductase (DHFR). It is used as a DMARD in rheumatoid arthritis and in various solid tumors/leukemias.[span_56](start_span)[span_56](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 94,
+    subject: "Pharmacology",
+    question: "Which anti-cancer drug classically causes hemorrhagic cystitis, and what is its antidote?",
+    answer: "Cyclophosphamide (and Ifosfamide). The antidote is Mesna.[span_57](start_span)[span_57](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 95,
+    subject: "Pharmacology",
+    question: "Which oral anticoagulant acts as a direct Factor Xa inhibitor?",
+    answer: "Rivaroxaban, Apixaban, or Edoxaban.[span_58](start_span)[span_58](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  },
+  {
+    id: 96,
+    subject: "Pharmacology",
+    question: "What is the drug of choice for a pregnant woman diagnosed with hyperthyroidism in her first trimester?",
+    answer: "Propylthiouracil (PTU), because Carbimazole/Methimazole are teratogenic (cause aplasia cutis).[span_59](start_span)[span_59](end_span)",
+    streak: 0,
+    mastered: false,
+    bookmarked: false
+  }
+];
+
+
+/* =========================================================================
+   AUTHENTICATION (Firebase Auth)
+   Replace the values below with your own Firebase project's web config —
+   Firebase Console → Project settings → General → Your apps → SDK setup.
+   The Firebase free (Spark) plan covers Google + Email/Password auth.
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyAKMqBzYVQRfvbXMsQs_Jrim-TIAObX7_c",
+  authDomain: "ai-flashcards-32af0.firebaseapp.com",
+  projectId: "ai-flashcards-32af0",
+  appId: "1:1045124370562:web:3a8e7952329c127314a49b",
+};
+
+const AUTH_TOKEN_KEY = "medflash_auth_token";
+const AUTH_USER_KEY = "medflash_auth_user";
+let authIsConfigured = false;
+let authMode = "login"; // "login" | "signup"
+let currentUser = null;
+
+try{
+  if(!firebaseConfig.apiKey.startsWith("REPLACE_WITH")){
+    firebase.initializeApp(firebaseConfig);
+    authIsConfigured = true;
+  }
+}catch(e){
+  console.error("Firebase init failed:", e);
+}
+
+function showAuthError(msg){
+  const el = document.getElementById("auth-error");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function clearAuthError(){
+  document.getElementById("auth-error").classList.remove("show");
+}
+
+function toggleAuthMode(){
+  authMode = authMode === "login" ? "signup" : "login";
+  document.getElementById("auth-submit-btn").textContent = authMode === "login" ? "Log in" : "Create account";
+  document.getElementById("auth-switch-text").textContent = authMode === "login" ? "New here?" : "Already have an account?";
+  document.getElementById("auth-switch-btn").textContent = authMode === "login" ? "Create an account" : "Log in";
+  clearAuthError();
+}
+
+function requireAuthConfigured(){
+  if(!authIsConfigured){
+    showAuthError("Add your Firebase project config in index.html (firebaseConfig) to enable sign-in.");
+    return false;
+  }
+  return true;
+}
+
+function signInWithGoogle(){
+  clearAuthError();
+  if(!requireAuthConfigured()) return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(provider).catch(err => {
+    showAuthError(err.message || "Google sign-in failed. Please try again.");
+  });
+}
+
+function submitEmailAuth(){
+  clearAuthError();
+  if(!requireAuthConfigured()) return;
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  if(!email || !password){
+    showAuthError("Enter both an email and a password.");
+    return;
+  }
+  const action = authMode === "login"
+    ? firebase.auth().signInWithEmailAndPassword(email, password)
+    : firebase.auth().createUserWithEmailAndPassword(email, password);
+  action.catch(err => showAuthError(err.message || "Authentication failed."));
+}
+
+function signOutUser(){
+  closeSettings();
+  if(authIsConfigured){
+    firebase.auth().signOut();
+  }else{
+    // No Firebase configured — just clear local session cache so the demo
+    // login screen reappears.
+    currentUser = null;
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+    renderAuthState(null);
+  }
+}
+
+function renderAuthState(user){
+  currentUser = user;
+  if(user){
+    document.getElementById("screen-auth").classList.remove("active");
+    document.getElementById("app").style.display = "block";
+    const avatar = document.getElementById("avatar-btn");
+    const initial = (user.displayName || user.email || "?").trim().charAt(0).toUpperCase();
+    avatar.innerHTML = user.photoURL ? `<img src="${user.photoURL}" alt="">` : initial;
+    document.getElementById("settings-user-email").textContent = user.email || user.displayName || "Signed in";
+    renderHome();
+  }else{
+    document.getElementById("app").style.display = "none";
+    document.getElementById("screen-auth").classList.add("active");
+  }
+}
+
+if(authIsConfigured){
+  firebase.auth().onAuthStateChanged(async user => {
+    if(user){
+      try{
+        const token = await user.getIdToken();
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify({
+          email: user.email, displayName: user.displayName, photoURL: user.photoURL
+        }));
+      }catch(e){ console.error("Failed to cache session token:", e); }
+    }else{
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+    }
+    renderAuthState(user);
+  });
+}else{
+  // Firebase isn't configured yet — fall back to the cached local session
+  // (if any) so the rest of the app remains usable during development.
+  try{
+    const cachedUser = JSON.parse(localStorage.getItem(AUTH_USER_KEY) || "null");
+    renderAuthState(cachedUser);
+  }catch(e){
+    renderAuthState(null);
+  }
+}
+
+/* =========================================================================
+   DEVELOPER SETTINGS (Gemini API key — local device only)
+   ========================================================================= */
+const GEMINI_KEY_STORAGE = "medflash_gemini_api_key";
+
+function loadGeminiKey(){ return localStorage.getItem(GEMINI_KEY_STORAGE) || ""; }
+function saveGeminiKey(){
+  const val = document.getElementById("gemini-key-input").value.trim();
+  if(val){
+    localStorage.setItem(GEMINI_KEY_STORAGE, val);
+    showToast("Gemini API key saved to this device");
+  }else{
+    localStorage.removeItem(GEMINI_KEY_STORAGE);
+    showToast("Gemini API key cleared");
+  }
+  closeSettings();
+}
+
+function openSettings(){
+  document.getElementById("gemini-key-input").value = loadGeminiKey();
+  document.getElementById("settings-user-email").textContent =
+    (currentUser && (currentUser.email || currentUser.displayName)) || "Signed in";
+  document.getElementById("settings-overlay").classList.add("active");
+}
+function closeSettings(){
+  document.getElementById("settings-overlay").classList.remove("active");
+}
+function closeSettingsIfBackdrop(e){
+  if(e.target.id === "settings-overlay") closeSettings();
+}
+
+/* =========================================================================
+   PDF → GEMINI FLASHCARD GENERATION PIPELINE
+   ========================================================================= */
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const MAX_PDF_PAGES = 300;
+const FLASHCARD_GEN_PROMPT = "You are an expert medical professor compiling high-yield flashcards for a house surgeon preparing for highly competitive residency entrance examinations. Analyze the provided multi-page medical PDF document. Extract exactly 100 of the most critical, highest-yield clinical pearls, definitions, diagnostic flowcharts, and drug side-effect profiles. Format your output strictly as a raw JSON array matching this exact schema layout without markdown blocks, without backticks, and without conversational text wrapper padding: [{\"subject\": \"string\", \"question\": \"string\", \"answer\": \"string\"}].";
+
+let selectedPdfFile = null;
+let selectedPdfPageCount = null;
+
+if(window["pdfjsLib"]){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js";
+}
+
+function openGenerate(){
+  resetGenerateUI();
+  document.getElementById("generate-overlay").classList.add("active");
+}
+function closeGenerate(){
+  document.getElementById("generate-overlay").classList.remove("active");
+}
+function closeGenerateIfBackdrop(e){
+  if(e.target.id === "generate-overlay") closeGenerate();
+}
+
+function resetGenerateUI(){
+  selectedPdfFile = null;
+  selectedPdfPageCount = null;
+  document.getElementById("gen-error").classList.remove("show");
+  document.getElementById("gen-error").textContent = "";
+  document.getElementById("file-chip-wrap").innerHTML = "";
+  document.getElementById("page-warning-wrap").innerHTML = "";
+  document.getElementById("pdf-file-input").value = "";
+  document.getElementById("pipeline-status").classList.remove("show");
+  ["read","send","parse","save"].forEach(k => {
+    document.getElementById("pl-row-" + k).classList.remove("active","done");
+  });
+  const btn = document.getElementById("generate-submit-btn");
+  btn.classList.add("disabled");
+  btn.classList.remove("busy");
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 2l3 3M12 2 9 5"/><rect x="3" y="10" width="18" height="11" rx="2"/></svg> Generate 100 flashcards`;
+}
+
+function handleDragOver(e){ e.preventDefault(); document.getElementById("dropzone").classList.add("drag"); }
+function handleDragLeave(e){ e.preventDefault(); document.getElementById("dropzone").classList.remove("drag"); }
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById("dropzone").classList.remove("drag");
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) processSelectedFile(e.dataTransfer.files[0]);
+}
+function handleFileSelect(e){
+  if(e.target.files && e.target.files[0]) processSelectedFile(e.target.files[0]);
+}
+
+function showGenError(msg){
+  const el = document.getElementById("gen-error");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+
+async function processSelectedFile(file){
+  document.getElementById("gen-error").classList.remove("show");
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  if(!isPdf){
+    showGenError("Only .pdf files are supported.");
+    return;
+  }
+  selectedPdfFile = file;
+  selectedPdfPageCount = null;
+
+  document.getElementById("file-chip-wrap").innerHTML = `
+    <div class="file-chip">
+      <span class="fc-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      </span>
+      <div>
+        <div class="fc-name">${escapeHtml(file.name)}</div>
+        <div class="fc-meta" id="fc-meta">${(file.size/1024/1024).toFixed(2)} MB · checking page count…</div>
+      </div>
+      <button class="fc-remove" onclick="resetGenerateUI()" aria-label="Remove file">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>`;
+  document.getElementById("page-warning-wrap").innerHTML = "";
+
+  try{
+    const pageCount = await countPdfPages(file);
+    selectedPdfPageCount = pageCount;
+    const metaEl = document.getElementById("fc-meta");
+    if(metaEl) metaEl.textContent = `${(file.size/1024/1024).toFixed(2)} MB · ${pageCount} page${pageCount===1?"":"s"}`;
+
+    if(pageCount > MAX_PDF_PAGES){
+      document.getElementById("page-warning-wrap").innerHTML = `
+        <div class="page-warning">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:1px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>This PDF has ${pageCount} pages, over the ${MAX_PDF_PAGES}-page limit. Please upload a shorter document.</span>
+        </div>`;
+      document.getElementById("generate-submit-btn").classList.add("disabled");
+      return;
+    }
+    document.getElementById("generate-submit-btn").classList.remove("disabled");
+  }catch(e){
+    console.error("Page count failed:", e);
+    const metaEl = document.getElementById("fc-meta");
+    if(metaEl) metaEl.textContent = `${(file.size/1024/1024).toFixed(2)} MB`;
+    // If we can't count pages client-side, still allow generation to proceed.
+    document.getElementById("generate-submit-btn").classList.remove("disabled");
+  }
+}
+
+function countPdfPages(file){
+  return new Promise((resolve, reject) => {
+    if(!window["pdfjsLib"]){ reject(new Error("pdf.js not available")); return; }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try{
+        const typedArray = new Uint8Array(reader.result);
+        const doc = await pdfjsLib.getDocument({ data: typedArray }).promise;
+        resolve(doc.numPages);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // readAsDataURL gives "data:application/pdf;base64,XXXX" — strip the prefix.
+      const result = reader.result;
+      const base64 = result.substring(result.indexOf(",") + 1);
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function setPipelineStep(step, state){
+  const row = document.getElementById("pl-row-" + step);
+  if(!row) return;
+  row.classList.remove("active","done");
+  if(state) row.classList.add(state);
+}
+
+async function runGenerationPipeline(){
+  if(!selectedPdfFile){ showGenError("Choose a PDF first."); return; }
+  if(selectedPdfPageCount && selectedPdfPageCount > MAX_PDF_PAGES){
+    showGenError(`This PDF exceeds the ${MAX_PDF_PAGES}-page limit.`);
+    return;
+  }
+  const apiKey = loadGeminiKey();
+  if(!apiKey){
+    showGenError("Add your Gemini API key in Developer Settings first.");
+    closeGenerate();
+    openSettings();
+    return;
+  }
+
+  const btn = document.getElementById("generate-submit-btn");
+  btn.classList.add("disabled","busy");
+  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" style="animation:spin .7s linear infinite;"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="40" stroke-linecap="round"/></svg> Generating…`;
+  document.getElementById("pipeline-status").classList.add("show");
+  document.getElementById("gen-error").classList.remove("show");
+
+  try{
+    // Step 1 — read the PDF locally and convert to base64
+    setPipelineStep("read", "active");
+    const base64Pdf = await fileToBase64(selectedPdfFile);
+    setPipelineStep("read", "done");
+
+    // Step 2 — silently send it to Gemini 1.5 Flash
+    setPipelineStep("send", "active");
+    const payload = {
+      contents: [{
+        parts: [
+          { text: FLASHCARD_GEN_PROMPT },
+          { inline_data: { mime_type: "application/pdf", data: base64Pdf } }
+        ]
+      }],
+      generationConfig: { temperature: 0.4 }
+    };
+    const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if(!response.ok){
+      const errBody = await response.text();
+      throw new Error(`Gemini API error (${response.status}): ${errBody.slice(0,200)}`);
+    }
+    const data = await response.json();
+    setPipelineStep("send", "done");
+
+    // Step 3 — parse the raw JSON array of flashcards out of the response
+    setPipelineStep("parse", "active");
+    const rawText = (data.candidates?.[0]?.content?.parts || [])
+      .map(p => p.text || "").join("").trim();
+    if(!rawText) throw new Error("Gemini returned an empty response.");
+
+    let cleanText = rawText.trim();
+    // Defensive cleanup in case the model wraps the array in a code fence anyway.
+    cleanText = cleanText.replace(/^```json\s*/i, "").replace(/^```\s*/,"").replace(/```\s*$/,"").trim();
+    const firstBracket = cleanText.indexOf("[");
+    const lastBracket = cleanText.lastIndexOf("]");
+    if(firstBracket !== -1 && lastBracket !== -1) cleanText = cleanText.slice(firstBracket, lastBracket+1);
+
+    let parsedCards;
+    try{
+      parsedCards = JSON.parse(cleanText);
+    }catch(parseErr){
+      throw new Error("Couldn't parse Gemini's response as JSON.");
+    }
+    if(!Array.isArray(parsedCards) || parsedCards.length === 0){
+      throw new Error("Gemini didn't return any flashcards.");
+    }
+    setPipelineStep("parse", "done");
+
+    // Step 4 — assign ids, apply default state, and push into the deck
+    setPipelineStep("save", "active");
+    const added = appendGeneratedCards(parsedCards);
+    setPipelineStep("save", "done");
+
+    closeGenerate();
+    showGenerationSuccess(added.length);
+  }catch(err){
+    console.error("Flashcard generation failed:", err);
+    showGenError(err.message || "Something went wrong while generating flashcards.");
+    btn.classList.remove("disabled","busy");
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 2l3 3M12 2 9 5"/><rect x="3" y="10" width="18" height="11" rx="2"/></svg> Generate 100 flashcards`;
+  }
+}
+
+function showGenerationSuccess(count){
+  document.getElementById("success-message").textContent =
+    `${count} High-Yield Flashcards successfully generated and synced to your deck!`;
+  document.getElementById("success-overlay").classList.add("show");
+}
+function closeSuccessOverlay(){
+  document.getElementById("success-overlay").classList.remove("show");
+}
+
+/* =========================================================================
+   STATE MANAGEMENT (localStorage)
+   ========================================================================= */
+const STORAGE_KEY = "medflash_state_v1";
+const CUSTOM_CARDS_KEY = "medflash_custom_cards_v1";
+const MASTERY_STREAK = 5;
+const SESSION_TIMER_SECONDS = 40;
+const KNOWN_SUBJECTS = ["Obs & Gynae", "Medicine", "Pharmacology"];
+
+let persisted = loadPersisted();
+let cards = mergeCards();
+
+function loadPersisted(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return { cardMeta:{}, totalSeen:0 };
+    const parsed = JSON.parse(raw);
+    return { cardMeta: parsed.cardMeta || {}, totalSeen: parsed.totalSeen || 0 };
+  }catch(e){
+    console.error("Failed to load saved progress:", e);
+    return { cardMeta:{}, totalSeen:0 };
+  }
+}
+
+function savePersisted(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
+  }catch(e){
+    console.error("Failed to save progress:", e);
+  }
+}
+
+/* ---- Gemini-generated cards live in their own localStorage bucket so they
+   survive reloads without needing to touch the hardcoded FLASHCARD_DATA
+   source array. They're merged with the base deck everywhere below. ---- */
+function loadCustomCards(){
+  try{
+    const raw = localStorage.getItem(CUSTOM_CARDS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){
+    console.error("Failed to load generated cards:", e);
+    return [];
+  }
+}
+
+function saveCustomCards(arr){
+  try{
+    localStorage.setItem(CUSTOM_CARDS_KEY, JSON.stringify(arr));
+  }catch(e){
+    console.error("Failed to save generated cards:", e);
+  }
+}
+
+function allBaseCards(){
+  return [...FLASHCARD_DATA, ...loadCustomCards()];
+}
+
+function nextCardId(){
+  const all = allBaseCards();
+  return all.length ? Math.max(...all.map(c => c.id)) + 1 : 1;
+}
+
+function mergeCards(){
+  return allBaseCards().map(base => {
+    const meta = persisted.cardMeta[base.id] || {};
+    return {
+      ...base,
+      streak: meta.streak ?? base.streak,
+      mastered: meta.mastered ?? base.mastered,
+      bookmarked: meta.bookmarked ?? base.bookmarked,
+    };
+  });
+}
+
+function persistCard(card){
+  persisted.cardMeta[card.id] = {
+    streak: card.streak,
+    mastered: card.mastered,
+    bookmarked: card.bookmarked,
+  };
+  savePersisted();
+}
+
+function getCard(id){ return cards.find(c => c.id === id); }
+
+/* ---- Append a freshly-generated batch of cards from Gemini into the deck ---- */
+function appendGeneratedCards(rawCards){
+  const custom = loadCustomCards();
+  let nextId = nextCardId();
+  const added = rawCards.map(rc => {
+    const card = {
+      id: nextId++,
+      subject: (rc.subject || "Generated").toString().trim() || "Generated",
+      question: (rc.question || "").toString().trim(),
+      answer: (rc.answer || "").toString().trim(),
+      streak: 0,
+      mastered: false,
+      bookmarked: false,
+    };
+    custom.push(card);
+    return card;
+  });
+  saveCustomCards(custom);
+  cards = mergeCards();
+  syncSubjectsWithDeck();
+  renderHome();
+  return added;
+}
+
+function syncSubjectsWithDeck(){
+  getSubjects().forEach(s => selectedSubjects.add(s));
+}
+
+/* =========================================================================
+   NAVIGATION
+   ========================================================================= */
+function showScreen(id){
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0,0);
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=> t.classList.remove("show"), 2200);
+}
+
+/* =========================================================================
+   HOME SCREEN
+   ========================================================================= */
+function renderHome(){
+  const hour = new Date().getHours();
+  const greetWord = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  document.getElementById("home-greeting").textContent = `${greetWord} 👋`;
+  document.getElementById("home-date").textContent = new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
+
+  document.getElementById("stat-seen").textContent = persisted.totalSeen;
+  const remaining = cards.filter(c => !c.mastered).length;
+  document.getElementById("stat-remain").textContent = remaining;
+
+  document.getElementById("count-bookmarks").textContent = cards.filter(c=>c.bookmarked).length;
+  document.getElementById("count-mastered").textContent = cards.filter(c=>c.mastered).length;
+
+  renderFlashcardOfDay();
+}
+
+let fotdCard = null;
+let fotdRevealed = false;
+function renderFlashcardOfDay(){
+  const pool = cards.filter(c => !c.mastered);
+  const source = pool.length ? pool : cards;
+  if(!fotdCard || fotdCard.mastered){
+    fotdCard = source[Math.floor(Math.random()*source.length)];
+  }
+  fotdRevealed = false;
+  const el = document.getElementById("fotd-card");
+  document.getElementById("fotd-subject").textContent = fotdCard.subject;
+  document.getElementById("fotd-subject").className = "fotd-tag";
+  document.getElementById("fotd-text").textContent = fotdCard.question;
+  document.getElementById("fotd-hint").textContent = "Tap to reveal answer";
+  el.onclick = () => {
+    fotdRevealed = !fotdRevealed;
+    document.getElementById("fotd-text").textContent = fotdRevealed ? fotdCard.answer : fotdCard.question;
+    document.getElementById("fotd-hint").textContent = fotdRevealed ? "Tap to see question again" : "Tap to reveal answer";
+  };
+}
+
+function resetProgressPrompt(){
+  if(confirm("Reset all study progress? This clears streaks, mastered cards, and bookmarks on this device.")){
+    persisted = { cardMeta:{}, totalSeen:0 };
+    savePersisted();
+    cards = mergeCards();
+    renderHome();
+    showToast("Progress reset");
+  }
+}
+
+/* =========================================================================
+   DECK CONFIG SHEET
+   ========================================================================= */
+function getSubjects(){
+  return Array.from(new Set(cards.map(c => c.subject)));
+}
+let selectedSubjects = new Set(getSubjects());
+let selectedCount = 20;
+
+function subjectClass(s){ return KNOWN_SUBJECTS.includes(s) ? "subj-" + s.replace(/[^A-Za-z]/g,"") : "subj-Generated"; }
+function tagClass(s){ return KNOWN_SUBJECTS.includes(s) ? "tag-" + s.replace(/[^A-Za-z]/g,"") : "tag-Generated"; }
+
+function openConfig(){
+  const list = document.getElementById("subject-list");
+  list.innerHTML = getSubjects().map(s => {
+    const total = cards.filter(c => c.subject === s && !c.mastered).length;
+    const checked = selectedSubjects.has(s);
+    return `
+      <button class="subject-row ${checked?'checked':''}" data-subject="${s}" onclick="toggleSubject('${s}')">
+        <div class="subject-info">
+          <span class="subject-dot ${subjectClass(s)}"></span>
+          <div>
+            <div class="subject-name">${s}</div>
+            <div class="subject-sub">${total} card${total===1?'':'s'} to review</div>
+          </div>
+        </div>
+        <span class="check-box">${checked ? checkSvg() : ''}</span>
+      </button>`;
+  }).join("");
+  updateStartButtonState();
+  document.getElementById("config-overlay").classList.add("active");
+}
+function checkSvg(){
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+}
+
+function toggleSubject(s){
+  if(selectedSubjects.has(s)) selectedSubjects.delete(s); else selectedSubjects.add(s);
+  openConfig();
+}
+
+function pickCount(n){
+  selectedCount = n;
+  document.querySelectorAll(".count-btn").forEach(b => b.classList.toggle("active", Number(b.dataset.count)===n));
+}
+
+function availableCount(){
+  return cards.filter(c => selectedSubjects.has(c.subject) && !c.mastered).length;
+}
+
+function updateStartButtonState(){
+  const btn = document.getElementById("start-session-btn");
+  const avail = availableCount();
+  btn.classList.toggle("disabled", avail === 0);
+  btn.textContent = avail === 0 ? "No cards available" : `Start Session (${Math.min(avail, selectedCount)} cards)`;
+}
+
+function closeConfig(){
+  document.getElementById("config-overlay").classList.remove("active");
+}
+function closeConfigIfBackdrop(e){
+  if(e.target.id === "config-overlay") closeConfig();
+}
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+/* =========================================================================
+   STUDY SESSION
+   ========================================================================= */
+let sessionQueue = [];
+let sessionIndex = 0;
+let timerInterval = null;
+let timeLeft = SESSION_TIMER_SECONDS;
+let isAnswerShown = false;
+
+function startSession(){
+  const pool = shuffle(cards.filter(c => selectedSubjects.has(c.subject) && !c.mastered));
+  if(pool.length === 0){ showToast("Select at least one subject with cards left"); return; }
+  sessionQueue = pool.slice(0, selectedCount);
+  sessionIndex = 0;
+  closeConfig();
+  showScreen("screen-study");
+  loadCard(sessionIndex, "in");
+}
+
+function currentSessionCard(){
+  return getCard(sessionQueue[sessionIndex].id);
+}
+
+function loadCard(idx, direction){
+  const card = currentSessionCard();
+  isAnswerShown = false;
+
+  document.getElementById("study-progress-num").textContent =
+    String(idx+1).padStart(2,'0') + "/" + String(sessionQueue.length).padStart(2,'0');
+  document.getElementById("study-progress-fill").style.width = ((idx)/sessionQueue.length*100) + "%";
+
+  document.getElementById("card-subject-front").textContent = card.subject;
+  document.getElementById("card-subject-back").textContent = card.subject;
+  document.getElementById("card-question-text").textContent = card.question;
+  document.getElementById("card-answer-text").textContent = card.answer;
+  document.getElementById("card-streak-front").textContent = "Streak " + card.streak;
+
+  const front = document.getElementById("card-front");
+  front.className = "card-face front lvl-" + Math.min(card.streak, 4);
+  const back = document.getElementById("card-back");
+  back.className = "card-face back " + (card.id % 2 === 0 ? "alt-b" : "alt-a");
+
+  const bookmarkBtn = document.getElementById("bookmark-toggle");
+  bookmarkBtn.classList.toggle("on", !!card.bookmarked);
+
+  const flipEl = document.getElementById("card-flip");
+  flipEl.classList.remove("flipped","slide-out-left","slide-out-right");
+
+  if(direction){
+    flipEl.classList.add("slide-in");
+    setTimeout(()=> flipEl.classList.remove("slide-in"), 400);
+  }
+
+  document.getElementById("controls-question").style.display = "";
+  document.getElementById("controls-answer").style.display = "none";
+  document.getElementById("next-btn").disabled = true;
+
+  resetTimer();
+}
+
+function resetTimer(){
+  clearInterval(timerInterval);
+  timeLeft = SESSION_TIMER_SECONDS;
+  updateTimerUI();
+  timerInterval = setInterval(()=>{
+    timeLeft--;
+    updateTimerUI();
+    if(timeLeft <= 0){
+      clearInterval(timerInterval);
+      showAnswer();
+    }
+  }, 1000);
+}
+
+function updateTimerUI(){
+  const pct = Math.max(0,(timeLeft/SESSION_TIMER_SECONDS)*100);
+  const fill = document.getElementById("timer-fill");
+  fill.style.width = pct + "%";
+  fill.classList.toggle("warn", timeLeft <= 10);
+  document.getElementById("timer-seconds").textContent = Math.max(0,timeLeft) + "s left";
+}
+
+function showAnswer(){
+  clearInterval(timerInterval);
+  isAnswerShown = true;
+  document.getElementById("card-flip").classList.add("flipped");
+  document.getElementById("controls-question").style.display = "none";
+  document.getElementById("controls-answer").style.display = "";
+}
+
+function showQuestion(){
+  document.getElementById("card-flip").classList.remove("flipped");
+  document.getElementById("controls-question").style.display = "";
+  document.getElementById("controls-answer").style.display = "none";
+  isAnswerShown = false;
+  resetTimer();
+}
+
+function submitFeedback(kind, evt){
+  const card = currentSessionCard();
+  if(kind === "got"){
+    card.streak += 1;
+  } else if(kind === "clue"){
+    card.streak = 0;
+  }
+  // "almost" leaves streak unchanged — partial credit, no penalty/no bonus
+
+  if(card.streak >= MASTERY_STREAK){
+    card.mastered = true;
+  }
+  persistCard(card);
+
+  persisted.totalSeen += 1;
+  savePersisted();
+
+  document.getElementById("card-streak-front").textContent = "Streak " + card.streak;
+  document.querySelectorAll(".feedback-row .fb-btn").forEach(b => b.style.opacity = "0.35");
+  if(evt && evt.currentTarget) evt.currentTarget.style.opacity = "1";
+  document.getElementById("next-btn").disabled = false;
+
+  if(card.mastered){
+    showToast(card.question.slice(0,28) + "… mastered! 🏆");
+  }
+}
+
+function nextCard(){
+  const flipEl = document.getElementById("card-flip");
+  const goingLeft = true;
+  flipEl.classList.add(goingLeft ? "slide-out-left" : "slide-out-right");
+
+  setTimeout(()=>{
+    document.querySelectorAll(".feedback-row .fb-btn").forEach(b => b.style.opacity = "1");
+    if(sessionIndex < sessionQueue.length - 1){
+      sessionIndex++;
+      loadCard(sessionIndex, "in");
+    }else{
+      finishSession();
+    }
+  }, 300);
+}
+
+function finishSession(){
+  clearInterval(timerInterval);
+  document.getElementById("study-progress-fill").style.width = "100%";
+  cards = mergeCards();
+  showScreen("screen-home");
+  renderHome();
+  showToast("Session complete — nice work! 🎉");
+}
+
+function toggleBookmarkCurrent(){
+  const card = currentSessionCard();
+  card.bookmarked = !card.bookmarked;
+  persistCard(card);
+  document.getElementById("bookmark-toggle").classList.toggle("on", card.bookmarked);
+  showToast(card.bookmarked ? "Bookmarked" : "Bookmark removed");
+}
+
+function exitSession(){
+  clearInterval(timerInterval);
+  cards = mergeCards();
+  showScreen("screen-home");
+  renderHome();
+  showToast("Session exited — progress saved");
+}
+
+/* =========================================================================
+   BOOKMARKS / MASTERED LISTS
+   ========================================================================= */
+function openList(type){
+  cards = mergeCards();
+  const title = type === "bookmarks" ? "Bookmarked cards" : "Mastered cards";
+  document.getElementById("list-title").textContent = title;
+  const items = type === "bookmarks" ? cards.filter(c=>c.bookmarked) : cards.filter(c=>c.mastered);
+  const container = document.getElementById("list-content");
+
+  if(items.length === 0){
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="ee-icon">${type==='bookmarks' ? '🔖' : '🏆'}</div>
+        <div style="font-weight:600; color:var(--ink-0); margin-bottom:4px;">
+          ${type==='bookmarks' ? 'No bookmarks yet' : 'No mastered cards yet'}
+        </div>
+        <div style="font-size:13.5px;">
+          ${type==='bookmarks' ? 'Tap the bookmark icon during a session to save a card here.' : 'Get a 5-streak on a card to master it.'}
+        </div>
+      </div>`;
+  }else{
+    container.innerHTML = items.map(c => `
+      <div class="list-item" onclick="this.classList.toggle('open')">
+        <div class="li-top">
+          <div class="li-q">${escapeHtml(c.question)}</div>
+          <span class="li-tag ${tagClass(c.subject)}">${c.subject}</span>
+        </div>
+        <div class="li-a">${escapeHtml(c.answer)} ${type==='mastered' ? '· Streak '+c.streak : ''}</div>
+      </div>
+    `).join("");
+  }
+  showScreen("screen-list");
+}
+
+function escapeHtml(str){
+  return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+document.getElementById("count-grid").querySelectorAll(".count-btn").forEach(b=>{
+  if(Number(b.dataset.count) === selectedCount) b.classList.add("active");
+});
+renderHome();
+</script>
+</body>
+</html>
