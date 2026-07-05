@@ -630,11 +630,37 @@
         </span>
       </button>
 
-      <a href="explore.html" style="display:block; margin-bottom:22px;">
-        <button class="quick-btn" style="width: 100%; border-color: var(--accent-2);">
-          <span>🚀 Explore Labs Features</span>
-        </button>
-      </a>
+      <a href="explore.html" style="display:block; margin-bottom:22px; text-decoration:none;">
+  <button class="labs-btn">
+    <span class="labs-btn-icon">🚀</span>
+    <span class="labs-btn-text">
+      <span class="labs-btn-title">Explore Labs Features</span>
+      <span class="labs-btn-sub">Try experimental tools in progress</span>
+    </span>
+    <svg class="labs-btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+</a>
+
+<style>
+  .labs-btn{
+    width:100%; display:flex; align-items:center; gap:14px;
+    padding:16px 18px; border-radius:18px;
+    background:linear-gradient(150deg, rgba(91,231,196,0.14), rgba(139,124,246,0.08));
+    border:1.5px solid var(--accent-2);
+    box-shadow:0 10px 26px -14px rgba(91,231,196,0.45);
+    text-align:left; cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .labs-btn:active{
+    transform:scale(0.98);
+    box-shadow:0 4px 14px -8px rgba(91,231,196,0.4);
+  }
+  .labs-btn-icon{font-size:22px; line-height:1; flex-shrink:0;}
+  .labs-btn-text{display:flex; flex-direction:column; gap:2px; flex:1; min-width:0;}
+  .labs-btn-title{font-size:14.5px; font-weight:700; color:var(--ink-0);}
+  .labs-btn-sub{font-size:12px; color:var(--ink-1);}
+  .labs-btn-arrow{color:var(--accent-2); flex-shrink:0;}
+</style>
 
       <div class="fotd-wrap">
         <div class="section-label">✨ Flashcard of the day</div>
