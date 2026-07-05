@@ -1357,6 +1357,16 @@ const FLASHCARD_DATA = [
   }
 ];
 
+  // A simple utility to strip out raw AI source tags and citation numbers on the fly
+function sanitizeText(dirtyText) {
+    if (!dirtyText) return '';
+    return dirtyText
+        .replace(/\[span_\d+\]/g, '')
+        .replace(/\(start_span\)/g, '')
+        .replace(/\(end_span\)/g, '')
+        .replace(/\/g, ''); // Bonus: Wipes out any raw markers too!
+}
+
 
 /* =========================================================================
    AUTHENTICATION (Firebase Auth)
