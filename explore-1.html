@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Labs — Recall</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== Same design tokens as index.html — keep these in sync manually
+     if you tweak the palette there, so Labs still looks native. ===== */
+  :root{
+    --bg-0:#0F0B18;
+    --bg-1:#171025;
+    --bg-2:#1E1730;
+    --ink-0:#F5F2FB;
+    --ink-1:#B6ADC9;
+    --ink-2:#5B5470;
+    --ink-muted:#83798F;
+    --line:rgba(255,255,255,0.08);
+    --glass-border:rgba(255,255,255,0.22);
+    --accent:#8B7CF6;
+    --accent-2:#5BE7C4;
+    --danger:#FF6B6B;
+    --amber:#FFB454;
+    --ok:#4ADE9C;
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:12px;
+    --sakura:#FFB7C5;
+    --sakura-deep:#F783AC;
+    --sakura-line:rgba(255,183,197,0.4);
+    --sakura-glow:rgba(255,183,197,0.28);
+    --safe-t:env(safe-area-inset-top,0px);
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px);
+    --safe-r:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  button{font:inherit; color:inherit; background:none; border:none; margin:0; padding:0; cursor:pointer;}
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background:var(--bg-0); color:var(--ink-0);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  h1,h2,h3{font-family:'Sora',sans-serif;}
+  .px{padding-left:22px; padding-right:22px;}
+  .top-bar{
+    display:flex; align-items:center; gap:12px;
+    padding:calc(var(--safe-t) + 18px) 22px 18px;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg-0); z-index:10;
+  }
+  .back-btn{
+    width:40px; height:40px; border-radius:12px; flex-shrink:0;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center; color:var(--ink-0);
+  }
+  .top-bar h1{font-size:19px; margin:0;}
+  .lab-banner{
+    margin:22px; padding:18px 20px; border-radius:var(--radius-md);
+    background:linear-gradient(150deg, rgba(139,124,246,0.16), rgba(91,231,196,0.08));
+    border:1px solid rgba(139,124,246,0.3);
+    font-size:13px; color:var(--ink-1); line-height:1.55;
+  }
+  .lab-banner b{color:var(--ink-0);}
+  .lab-grid{display:flex; flex-direction:column; gap:14px; padding:0 22px calc(var(--safe-b) + 40px);}
+  .lab-card{
+    padding:20px; border-radius:var(--radius-md);
+    background:rgba(255,255,255,0.04); border:1px solid var(--line);
+    display:flex; gap:14px; align-items:flex-start; text-align:left;
+  }
+  .lab-card .lc-icon{
+    width:44px; height:44px; border-radius:13px; flex-shrink:0;
+    background:rgba(139,124,246,0.16); color:var(--accent);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .lab-card .lc-title{font-size:15px; font-weight:700; margin:0 0 4px;}
+  .lab-card .lc-sub{font-size:12.5px; color:var(--ink-1); margin:0; line-height:1.5;}
+  .lab-card .lc-status{
+    font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+    padding:4px 9px; border-radius:100px; margin-top:8px; display:inline-block;
+  }
+  .status-idea{background:rgba(255,180,84,0.14); color:var(--amber);}
+  .status-building{background:rgba(139,124,246,0.16); color:var(--accent);}
+  .status-ready{background:rgba(74,222,156,0.14); color:var(--ok);}
+  .empty-note{
+    text-align:center; padding:40px 22px; color:var(--ink-muted); font-size:13.5px; line-height:1.6;
+  }
+
+  /* ===== Today's Topic card ===== */
+  .topic-card{
+    margin:0 22px 22px; padding:22px; border-radius:var(--radius-lg);
+    background:linear-gradient(155deg, rgba(139,124,246,0.14), rgba(91,231,196,0.06));
+    border:1px solid rgba(139,124,246,0.35);
+    box-shadow:0 18px 40px -26px rgba(139,124,246,0.55);
+  }
+  .topic-card .tc-eyebrow{
+    display:flex; align-items:center; gap:8px; margin-bottom:12px;
+    font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-2);
+  }
+  .topic-card .tc-eyebrow svg{flex-shrink:0;}
+  .topic-card .tc-source-badge{
+    margin-left:auto; font-size:9.5px; font-weight:700; letter-spacing:.03em; text-transform:none;
+    color:var(--ink-1); background:rgba(255,255,255,0.08); padding:3px 8px; border-radius:100px;
+  }
+  .topic-card .tc-subject{
+    display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.02em;
+    color:var(--ink-0); background:rgba(255,255,255,0.1); border:1px solid var(--line);
+    padding:3px 10px; border-radius:100px; margin-bottom:10px;
+  }
+  .topic-card .tc-title{font-size:18px; font-weight:700; margin:0 0 10px; line-height:1.3;}
+  .topic-card .tc-summary{font-size:13.5px; color:var(--ink-1); line-height:1.6; margin:0;}
+
+  /* ===== Manage Uploaded PDFs ===== */
+  .section-label{
+    font-size:13px; font-weight:700; color:var(--ink-1); margin:0 22px 10px; display:flex; align-items:center; gap:8px;
+  }
+  .pdf-manager-wrap{
+    display:flex; flex-direction:column; gap:10px; padding:0 22px; margin-bottom:26px;
+  }
+  .pdf-manage-row{
+    display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:16px;
+    background:rgba(255,255,255,0.04); border:1px solid var(--line);
+  }
+  .pmr-info{flex:1; min-width:0;}
+  .pmr-title{font-weight:600; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .pmr-sub{font-size:12px; color:var(--ink-muted); margin-top:2px;}
+  .pmr-delete-btn{
+    display:flex; align-items:center; gap:6px; flex-shrink:0;
+    padding:9px 13px; border-radius:12px; font-size:12.5px; font-weight:700;
+    background:rgba(255,107,107,0.12); border:1px solid rgba(255,107,107,0.35); color:var(--danger);
+  }
+  .pmr-delete-btn:active{background:rgba(255,107,107,0.22);}
+
+  /* ===== Dr. Akash passcode modal — sakura theme ===== */
+  .akash-overlay{
+    position:fixed; inset:0; background:rgba(6,4,12,0.72); backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center; z-index:80; padding:24px;
+  }
+  .akash-overlay.show{display:flex;}
+  .akash-modal{
+    position:relative; overflow:hidden;
+    width:100%; max-width:380px;
+    background:
+      linear-gradient(155deg, rgba(255,183,197,0.07), rgba(139,124,246,0.05) 55%, var(--bg-1) 100%),
+      var(--bg-1);
+    border:1px solid var(--sakura-line);
+    box-shadow:0 24px 60px -30px rgba(255,120,160,0.35), 0 0 0 1px rgba(255,183,197,0.05) inset;
+    border-radius:var(--radius-lg); padding:26px; text-align:center;
+  }
+  /* large branch + blossom watermark, artistic ink-brush line style */
+  .akash-modal::before{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 320'><g fill='none' stroke='%23FFB7C5' stroke-width='2.4' stroke-linecap='round' opacity='0.55'><path d='M-10 300 C 40 260, 70 230, 100 195 C 125 165, 145 140, 175 100 C 195 72, 210 55, 240 20'/><path d='M120 175 C 108 168, 96 168, 84 178'/><path d='M150 135 C 162 126, 172 126, 182 134'/><path d='M190 78 C 178 72, 168 74, 158 84'/></g><g opacity='0.6'><g transform='translate(232,28) scale(1.05)'><circle r='8' cy='-12' fill='%23FFB7C5'/><circle r='8' cx='11' cy='-4' fill='%23FFB7C5'/><circle r='8' cx='7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-11' cy='-4' fill='%23FFB7C5'/><circle r='3' fill='%23F783AC'/></g><g transform='translate(178,92) scale(0.8)'><circle r='8' cy='-12' fill='%23FFB7C5'/><circle r='8' cx='11' cy='-4' fill='%23FFB7C5'/><circle r='8' cx='7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-11' cy='-4' fill='%23FFB7C5'/><circle r='3' fill='%23F783AC'/></g><g transform='translate(96,190) scale(0.9)'><circle r='8' cy='-12' fill='%23FFB7C5'/><circle r='8' cx='11' cy='-4' fill='%23FFB7C5'/><circle r='8' cx='7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-11' cy='-4' fill='%23FFB7C5'/><circle r='3' fill='%23F783AC'/></g><g transform='translate(38,258) scale(0.65)'><circle r='8' cy='-12' fill='%23FFB7C5'/><circle r='8' cx='11' cy='-4' fill='%23FFB7C5'/><circle r='8' cx='7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-7' cy='10' fill='%23FFB7C5'/><circle r='8' cx='-11' cy='-4' fill='%23FFB7C5'/><circle r='3' fill='%23F783AC'/></g></g></svg>");
+    background-repeat:no-repeat; background-position:top right; background-size:78% auto;
+  }
+  .akash-modal > *{position:relative; z-index:1;}
+  .akash-petals{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:1;}
+  .akash-petal{
+    position:absolute; top:-12px; width:9px; height:9px; border-radius:60% 5% 60% 5%;
+    background:linear-gradient(135deg, var(--sakura), var(--sakura-deep));
+    opacity:0.75; animation:akash-fall linear infinite;
+  }
+  @keyframes akash-fall{
+    0%{ transform:translateY(-20px) rotate(0deg); }
+    100%{ transform:translateY(340px) rotate(300deg); }
+  }
+  .akash-modal .am-icon{
+    width:56px; height:56px; border-radius:16px; margin:0 auto 16px;
+    background:rgba(255,183,197,0.16); color:var(--sakura-deep);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .akash-modal h3{font-size:17px; margin:0 0 6px;}
+  .akash-modal p{font-size:13px; color:var(--ink-1); margin:0 0 18px; line-height:1.5;}
+  .akash-modal input{
+    width:100%; padding:14px 15px; border-radius:14px; margin-bottom:14px;
+    background:rgba(255,255,255,0.05); border:1px solid var(--line);
+    color:var(--ink-0); font-size:14.5px; font-family:inherit; text-align:center;
+  }
+  .akash-modal input:focus{outline:none; border-color:var(--sakura);}
+  .akash-modal-btns{display:flex; gap:10px;}
+  .akash-modal-btns button{
+    flex:1; padding:13px; border-radius:13px; font-weight:700; font-size:13.5px;
+  }
+  .akash-cancel-btn{background:rgba(255,255,255,0.05); border:1px solid var(--line); color:var(--ink-1);}
+  .akash-submit-btn{background:linear-gradient(135deg,var(--sakura-deep),#B84C74); color:#fff;}
+  .akash-result-wrap{margin-top:4px;}
+  .akash-prank{font-size:15px; font-weight:700; margin:6px 0 0;}
+  .akash-prank-sub{font-size:12.5px; color:var(--ink-muted); margin-top:6px;}
+
+  .akash-carousel{
+    position:relative; display:flex; align-items:center; gap:8px;
+    touch-action:pan-y; user-select:none; -webkit-user-select:none;
+  }
+  .akash-carousel-card{
+    position:relative; overflow:hidden;
+    flex:1; min-height:110px; padding:18px 16px; border-radius:16px;
+    background:rgba(255,183,197,0.08); border:1px solid var(--sakura-line);
+    display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:left;
+    cursor:grab;
+  }
+  /* small blossom + branch watermark tucked in the corner of each card */
+  .akash-carousel-card::before{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 140 110'><path d='M150 -10 C 120 20, 105 35, 88 52 C 76 64, 68 72, 55 84' fill='none' stroke='%23FFB7C5' stroke-width='2.2' stroke-linecap='round' opacity='0.5'/><g transform='translate(78,46)' opacity='0.55'><circle r='7' cy='-10' fill='%23FFB7C5'/><circle r='7' cx='9' cy='-3' fill='%23FFB7C5'/><circle r='7' cx='6' cy='8' fill='%23FFB7C5'/><circle r='7' cx='-6' cy='8' fill='%23FFB7C5'/><circle r='7' cx='-9' cy='-3' fill='%23FFB7C5'/><circle r='2.6' fill='%23F783AC'/></g><g transform='translate(45,80) scale(0.6)' opacity='0.4'><circle r='7' cy='-10' fill='%23FFB7C5'/><circle r='7' cx='9' cy='-3' fill='%23FFB7C5'/><circle r='7' cx='6' cy='8' fill='%23FFB7C5'/><circle r='7' cx='-6' cy='8' fill='%23FFB7C5'/><circle r='7' cx='-9' cy='-3' fill='%23FFB7C5'/><circle r='2.6' fill='%23F783AC'/></g></svg>");
+    background-repeat:no-repeat; background-position:top right; background-size:70% auto;
+  }
+  .akash-carousel-card > *{position:relative; z-index:1;}
+  .akash-carousel-card .ac-num{font-size:11px; font-weight:700; color:var(--sakura-deep); letter-spacing:.03em;}
+  .akash-carousel-card .ac-text{font-size:14.5px; font-weight:600; line-height:1.45;}
+  .akash-nav-btn{
+    width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    background:rgba(255,183,197,0.08); border:1px solid var(--sakura-line); color:var(--ink-1);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .akash-nav-btn:disabled{opacity:.3; pointer-events:none;}
+  .akash-dots{display:flex; justify-content:center; gap:6px; margin-top:14px;}
+  .akash-dot{width:6px; height:6px; border-radius:50%; background:var(--line);}
+  .akash-dot.active{background:var(--sakura-deep); width:16px; border-radius:3px;}
+  .akash-swipe-hint{font-size:11.5px; color:var(--ink-muted); margin-top:10px;}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a class="back-btn" href="index.html" aria-label="Back to Recall">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+  </a>
+  <h1>🚀 Labs</h1>
+</div>
+
+<div class="lab-banner">
+  This is a <b>sandbox</b>, separate from <code>index.html</code>. Prototype new features here freely —
+  nothing on this page touches the production flashcard app, its Firebase config, or your saved deck.
+  When something's ready, port it over deliberately.
+</div>
+
+<div id="topic-card-wrap"></div>
+
+<div class="section-label">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+  Manage Uploaded PDFs
+</div>
+<div class="pdf-manager-wrap" id="pdf-manager-wrap"></div>
+
+<div class="lab-grid" id="lab-grid">
+  <!-- Example placeholder cards — replace/remove as you add real experiments -->
+  <button class="lab-card" style="width:100%; cursor:pointer;" onclick="openAkashModal()">
+    <span class="lc-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </span>
+    <div>
+      <div class="lc-title">Personalized Advice from Dr. Akash</div>
+      <p class="lc-sub">Enter the passcode to unlock 5 exclusive flashcards of wisdom.</p>
+      <span class="lc-status status-idea">🔒 Locked</span>
+    </div>
+  </button>
+
+  <div class="lab-card">
+    <span class="lc-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+    </span>
+    <div>
+      <div class="lc-title">Spaced repetition scheduler</div>
+      <p class="lc-sub">Prototype an SM-2 style interval algorithm before wiring it into the real streak logic.</p>
+      <span class="lc-status status-idea">Idea</span>
+    </div>
+  </div>
+
+  <div class="lab-card">
+    <span class="lc-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+    </span>
+    <div>
+      <div class="lc-title">Progress analytics dashboard</div>
+      <p class="lc-sub">Try out charts (recall accuracy over time, subject heatmap) against sample data.</p>
+      <span class="lc-status status-building">Building</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Dr. Akash passcode modal ===== -->
+<div class="akash-overlay" id="akash-overlay">
+  <div class="akash-modal" id="akash-modal-content">
+    <!-- populated by JS: passcode form, prank message, or the 5 cards -->
+  </div>
+</div>
+
+<script>
+  /* ===== Today's Topic =====
+     A small curated bank of high-yield clinical summaries. Picks one
+     deterministically based on the day of the year, so it's stable all day
+     and rotates tomorrow — no API calls, fully offline. Feel free to expand
+     TOPIC_BANK with more entries or swap this for a real data source later. */
+  const TOPIC_BANK = [
+    {
+      subject: "Medicine",
+      title: "Diabetic Ketoacidosis (DKA)",
+      summary: "DKA results from severe insulin deficiency, causing hyperglycemia, ketogenesis, and metabolic acidosis. It classically presents with polyuria, vomiting, abdominal pain, Kussmaul breathing, and a fruity breath odor. Management centers on IV fluids, insulin infusion, and careful potassium replacement, since correcting acidosis can rapidly drop serum potassium."
+    },
+    {
+      subject: "Pharmacology",
+      title: "Beta-Blocker Contraindications",
+      summary: "Non-selective beta-blockers should be used cautiously in asthma/COPD due to bronchospasm risk, and in decompensated heart failure or severe bradycardia/heart block. They can also mask hypoglycemic symptoms in diabetics, aside from sweating. Abrupt withdrawal after chronic use risks rebound tachycardia and hypertension."
+    },
+    {
+      subject: "Obs & Gynae",
+      title: "Preeclampsia Red Flags",
+      summary: "Preeclampsia is new-onset hypertension after 20 weeks with proteinuria or evidence of end-organ dysfunction. Warning signs of progression to severe disease include headache, visual changes, epigastric pain, and rising liver enzymes or platelet drop (HELLP). Magnesium sulfate is used for seizure prophylaxis in severe cases."
+    },
+    {
+      subject: "Medicine",
+      title: "ECG Changes in Hyperkalemia",
+      summary: "Hyperkalemia progresses through a recognizable ECG sequence: peaked T waves first, followed by PR prolongation and QRS widening, and eventually a sine-wave pattern preceding arrest. IV calcium gluconate is given to stabilize the cardiac membrane, while insulin-glucose and beta-agonists shift potassium intracellularly."
+    },
+    {
+      subject: "Pharmacology",
+      title: "Warfarin vs DOACs",
+      summary: "Warfarin inhibits vitamin K-dependent clotting factors (II, VII, IX, X) and requires INR monitoring, with reversal via vitamin K or prothrombin complex concentrate. Direct oral anticoagulants (e.g. apixaban, rivaroxaban) act on factor Xa or thrombin directly, need no routine monitoring, but are avoided in severe renal impairment or mechanical heart valves."
+    },
+    {
+      subject: "Obs & Gynae",
+      title: "Postpartum Hemorrhage — The 4 Ts",
+      summary: "Postpartum hemorrhage is commonly organized around the 4 Ts: Tone (uterine atony, the most common cause), Trauma (lacerations or rupture), Tissue (retained placenta), and Thrombin (coagulopathy). Initial management includes uterine massage, oxytocin, and identifying the underlying T to guide further treatment."
+    },
+    {
+      subject: "Medicine",
+      title: "Community-Acquired Pneumonia Severity",
+      summary: "The CURB-65 score (Confusion, Urea, Respiratory rate ≥30, Blood pressure low, Age ≥65) helps triage pneumonia severity and guides admission decisions. Empiric antibiotics typically cover typical and atypical organisms, with coverage adjusted based on severity and local resistance patterns."
+    },
+    {
+      subject: "Pharmacology",
+      title: "Serotonin Syndrome vs Neuroleptic Malignant Syndrome",
+      summary: "Serotonin syndrome develops rapidly after serotonergic drug combinations and features hyperreflexia, clonus, and agitation. Neuroleptic malignant syndrome, linked to antipsychotics, evolves more slowly with 'lead-pipe' rigidity and hyporeflexia. Both can cause hyperthermia and autonomic instability, but the neuromuscular findings help distinguish them."
+    }
+  ];
+
+  // Same localStorage key index.html uses for Gemini-generated cards — this
+  // is how Labs can see topics from PDFs you've actually uploaded, since
+  // both pages share the same browser origin/storage.
+  const CUSTOM_CARDS_KEY = "medflash_custom_cards_v1";
+
+  // Defensive copy of index.html's sanitizer, in case any stray OCR/layout
+  // metadata (e.g. [span_9], (start_span)) ever slips into stored text.
+  function sanitizeText(str){
+    if(!str) return "";
+    return String(str)
+      .replace(/\[\s*\/?\s*span[_\- ]?\d*\s*\]/gi, "")
+      .replace(/\(\s*\/?\s*(?:start|end)[_\- ]?span(?:[_\- ]?\d+)?\s*\)/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function formatSubjectLabel(s){
+    return String(s || "Generated").replace(/[-_]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  /* Reads whatever's been generated from uploaded PDFs and groups it by
+     subject + subtopic, so each "topic" here mirrors one accordion row in
+     the main app's session builder. Returns [] if nothing's been uploaded
+     yet, or if this page is opened somewhere with no shared storage. */
+  function getUploadedTopics(){
+    try{
+      const raw = localStorage.getItem(CUSTOM_CARDS_KEY);
+      const generatedCards = raw ? JSON.parse(raw) : [];
+      if(!Array.isArray(generatedCards) || !generatedCards.length) return [];
+
+      const groups = new Map();
+      generatedCards.forEach(c => {
+        const subject = c.subject || "generated";
+        const subtopic = c.subtopic || "General";
+        const key = subject + "::" + subtopic;
+        if(!groups.has(key)) groups.set(key, { subject, subtopic, cards: [] });
+        groups.get(key).cards.push(c);
+      });
+
+      return Array.from(groups.values()).map(g => ({
+        source: "pdf",
+        subject: formatSubjectLabel(g.subject),
+        title: g.subtopic,
+        summary: g.cards.slice(0, 3).map(c => sanitizeText(c.answer)).filter(Boolean).join(" ") ||
+                 "Uploaded, but no answer text was captured for this topic.",
+      }));
+    }catch(e){
+      console.error("Couldn't read uploaded flashcards for Labs:", e);
+      return [];
+    }
+  }
+
+  function dayOfYear(date){
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date - start;
+    return Math.floor(diff / 86400000);
+  }
+
+  function renderTodaysTopic(){
+    // Pool = whatever's been uploaded, plus the curated bank as a steady
+    // baseline — so the rotation always has content, and grows richer as
+    // you upload more PDFs in the main app.
+    const uploadedTopics = getUploadedTopics();
+    const curatedTopics = TOPIC_BANK.map(t => ({ source: "curated", ...t }));
+    const pool = [...uploadedTopics, ...curatedTopics];
+
+    const topic = pool[dayOfYear(new Date()) % pool.length];
+    const badgeLabel = topic.source === "pdf" ? "From your uploaded PDF" : "Curated pick";
+
+    document.getElementById("topic-card-wrap").innerHTML = `
+      <div class="topic-card">
+        <div class="tc-eyebrow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.4 2.3 7.2L12 16.6l-6.3 4.4 2.3-7.2-6-4.4h7.6z"/></svg>
+          Today's High-Yield Topic
+          <span class="tc-source-badge">${badgeLabel}</span>
+        </div>
+        <span class="tc-subject">${topic.subject}</span>
+        <h2 class="tc-title">${topic.title}</h2>
+        <p class="tc-summary">${topic.summary}</p>
+      </div>`;
+  }
+  renderTodaysTopic();
+
+  /* ===== Manage Uploaded PDFs =====
+     Lets you remove an entire generated PDF's worth of cards (grouped by
+     the subject slug the main app derives from the filename) directly from
+     this sandbox — writes back to the same shared localStorage key, so
+     index.html picks up the change next time it loads. */
+  const STATE_KEY = "medflash_state_v1"; // index.html's progress-meta key, used only to prune orphans below
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+  }
+
+  function loadCustomCardsRaw(){
+    try{
+      const raw = localStorage.getItem(CUSTOM_CARDS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    }catch(e){
+      console.error("Couldn't read generated cards:", e);
+      return [];
+    }
+  }
+
+  function getUploadedPdfGroups(){
+    const bySubject = new Map();
+    loadCustomCardsRaw().forEach(c => {
+      const subject = c.subject || "generated";
+      if(!bySubject.has(subject)) bySubject.set(subject, []);
+      bySubject.get(subject).push(c);
+    });
+    return Array.from(bySubject.entries()).map(([subject, cardsInGroup]) => ({
+      subject,
+      count: cardsInGroup.length,
+      subtopicCount: new Set(cardsInGroup.map(c => c.subtopic || "General")).size,
+    }));
+  }
+
+  function renderPdfManager(){
+    const wrap = document.getElementById("pdf-manager-wrap");
+    const groups = getUploadedPdfGroups();
+    if(!groups.length){
+      wrap.innerHTML = `<div class="empty-note">No generated PDFs yet — upload one from the main app's "Generate from a PDF" card.</div>`;
+      return;
+    }
+    wrap.innerHTML = groups.map(g => `
+      <div class="pdf-manage-row">
+        <div class="pmr-info">
+          <div class="pmr-title">${escapeHtml(formatSubjectLabel(g.subject))}</div>
+          <div class="pmr-sub">${g.count} card${g.count===1?'':'s'} · ${g.subtopicCount} topic${g.subtopicCount===1?'':'s'}</div>
+        </div>
+        <button class="pmr-delete-btn" data-subject="${escapeHtml(g.subject)}" data-action="delete-pdf">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+          Remove
+        </button>
+      </div>`).join("");
+  }
+
+  function removeUploadedPdf(subject){
+    const all = loadCustomCardsRaw();
+    const idsToRemove = new Set(all.filter(c => (c.subject || "generated") === subject).map(c => c.id));
+    const remaining = all.filter(c => (c.subject || "generated") !== subject);
+
+    try{
+      localStorage.setItem(CUSTOM_CARDS_KEY, JSON.stringify(remaining));
+    }catch(e){
+      console.error("Couldn't save after removing PDF:", e);
+      return;
+    }
+
+    // Prune orphaned progress meta (streak/mastered/bookmarked) for the
+    // removed card ids, so nothing stale lingers in index.html's state.
+    try{
+      const raw = localStorage.getItem(STATE_KEY);
+      if(raw){
+        const state = JSON.parse(raw);
+        if(state && state.cardMeta){
+          idsToRemove.forEach(id => { delete state.cardMeta[id]; });
+          localStorage.setItem(STATE_KEY, JSON.stringify(state));
+        }
+      }
+    }catch(e){
+      console.error("Couldn't prune progress meta:", e);
+    }
+
+    renderPdfManager();
+    renderTodaysTopic(); // the topic pool may have just changed
+  }
+
+  document.getElementById("pdf-manager-wrap").addEventListener("click", e => {
+    const btn = e.target.closest("button[data-action='delete-pdf']");
+    if(!btn) return;
+    const subject = btn.dataset.subject;
+    const label = formatSubjectLabel(subject);
+    if(confirm(`Remove all flashcards generated from "${label}"? This can't be undone.`)){
+      removeUploadedPdf(subject);
+    }
+  });
+
+  renderPdfManager();
+
+  /* ===== Personalized Advice from Dr. Akash =====
+     A just-for-fun passcode gate. Note: the passcode lives in plain text in
+     this file's source, same as everything else client-side — this is a
+     lighthearted Easter egg, not real access control. */
+  const AKASH_PASSCODE = "wisdombyakash";
+  const AKASH_WISDOM = [
+    "Listen to Dr. Akash more often.",
+    "His girlfriend must be lucky.",
+    "He probably aced this without even trying.",
+    "Future patients are already lucky to have him.",
+    "This flashcard app? Pure genius, obviously.",
+  ];
+  let akashIndex = 0;
+  let akashSwipeStartX = null;
+
+  function akashPasscodeFormHtml(){
+    return `
+      <div class="am-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <h3>Enter the passcode</h3>
+      <p>Dr. Akash's personalized advice is for verified fans only.</p>
+      <input type="password" id="akash-passcode-input" placeholder="Passcode" autocomplete="off">
+      <div class="akash-modal-btns">
+        <button class="akash-cancel-btn" onclick="closeAkashModal()">Cancel</button>
+        <button class="akash-submit-btn" onclick="submitAkashPasscode()">Unlock</button>
+      </div>`;
+  }
+
+  function openAkashModal(){
+    document.getElementById("akash-modal-content").innerHTML = akashPasscodeFormHtml();
+    document.getElementById("akash-overlay").classList.add("show");
+    const input = document.getElementById("akash-passcode-input");
+    input.focus();
+    input.addEventListener("keydown", e => { if(e.key === "Enter") submitAkashPasscode(); });
+  }
+
+  function closeAkashModal(){
+    document.getElementById("akash-overlay").classList.remove("show");
+  }
+
+  function submitAkashPasscode(){
+    const entered = (document.getElementById("akash-passcode-input").value || "").trim();
+    const content = document.getElementById("akash-modal-content");
+
+    if(entered === AKASH_PASSCODE){
+      content.innerHTML = `
+        <div class="akash-petals">
+          <span class="akash-petal" style="left:12%; animation-duration:6.5s; animation-delay:0s;"></span>
+          <span class="akash-petal" style="left:32%; animation-duration:8s; animation-delay:1.2s; width:7px; height:7px;"></span>
+          <span class="akash-petal" style="left:58%; animation-duration:7s; animation-delay:0.4s;"></span>
+          <span class="akash-petal" style="left:75%; animation-duration:9s; animation-delay:2s; width:6px; height:6px;"></span>
+          <span class="akash-petal" style="left:90%; animation-duration:6s; animation-delay:0.8s;"></span>
+        </div>
+        <div class="am-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        </div>
+        <h3>Unlocked</h3>
+        <p>Straight from Dr. Akash himself.</p>
+        <div class="akash-carousel" id="akash-carousel">
+          <button class="akash-nav-btn" id="akash-prev-btn" aria-label="Previous">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <div class="akash-carousel-card" id="akash-carousel-card"></div>
+          <button class="akash-nav-btn" id="akash-next-btn" aria-label="Next">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="akash-dots" id="akash-dots"></div>
+        <p class="akash-swipe-hint">Swipe left for the next card</p>
+        <div class="akash-modal-btns" style="margin-top:16px;">
+          <button class="akash-submit-btn" style="width:100%;" onclick="closeAkashModal()">Close</button>
+        </div>`;
+      initAkashCarousel();
+    }else{
+      content.innerHTML = `
+        <div class="am-icon" style="background:rgba(255,107,107,0.14); color:var(--danger);">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+        </div>
+        <div class="akash-result-wrap">
+          <p class="akash-prank">There's nothing here. You've been pranked! 😂</p>
+          <p class="akash-prank-sub">Wrong passcode — try again if you dare.</p>
+        </div>
+        <div class="akash-modal-btns" style="margin-top:16px;">
+          <button class="akash-cancel-btn" onclick="closeAkashModal()">Close</button>
+          <button class="akash-submit-btn" onclick="openAkashModal()">Try Again</button>
+        </div>`;
+    }
+  }
+
+  function initAkashCarousel(){
+    akashIndex = 0;
+    renderAkashCardContent();
+
+    const prevBtn = document.getElementById("akash-prev-btn");
+    const nextBtn = document.getElementById("akash-next-btn");
+    prevBtn.onclick = () => goToAkashCard(akashIndex - 1);
+    nextBtn.onclick = () => goToAkashCard(akashIndex + 1);
+
+    // Pointer events cover touch swipes and mouse drags with one code path.
+    const carousel = document.getElementById("akash-carousel");
+    akashSwipeStartX = null;
+    carousel.addEventListener("pointerdown", e => { akashSwipeStartX = e.clientX; });
+    carousel.addEventListener("pointerup", e => {
+      if(akashSwipeStartX === null) return;
+      const deltaX = e.clientX - akashSwipeStartX;
+      akashSwipeStartX = null;
+      const SWIPE_THRESHOLD = 40;
+      if(deltaX <= -SWIPE_THRESHOLD) goToAkashCard(akashIndex + 1);       // swiped left -> next
+      else if(deltaX >= SWIPE_THRESHOLD) goToAkashCard(akashIndex - 1);  // swiped right -> previous
+    });
+  }
+
+  function goToAkashCard(newIndex){
+    if(newIndex < 0 || newIndex >= AKASH_WISDOM.length) return;
+    const cardEl = document.getElementById("akash-carousel-card");
+    const goingForward = newIndex > akashIndex;
+    cardEl.style.transition = "transform .16s ease, opacity .16s ease";
+    cardEl.style.transform = `translateX(${goingForward ? "-18px" : "18px"})`;
+    cardEl.style.opacity = "0";
+    setTimeout(() => {
+      akashIndex = newIndex;
+      renderAkashCardContent();
+      cardEl.style.transition = "none";
+      cardEl.style.transform = `translateX(${goingForward ? "18px" : "-18px"})`;
+      cardEl.style.opacity = "0";
+      requestAnimationFrame(() => {
+        cardEl.style.transition = "transform .16s ease, opacity .16s ease";
+        cardEl.style.transform = "translateX(0)";
+        cardEl.style.opacity = "1";
+      });
+    }, 160);
+  }
+
+  function renderAkashCardContent(){
+    const cardEl = document.getElementById("akash-carousel-card");
+    cardEl.innerHTML = `
+      <span class="ac-num">${akashIndex + 1} / ${AKASH_WISDOM.length}</span>
+      <div class="ac-text">${escapeHtml(AKASH_WISDOM[akashIndex])}</div>`;
+
+    document.getElementById("akash-dots").innerHTML = AKASH_WISDOM.map((_, i) =>
+      `<span class="akash-dot ${i === akashIndex ? "active" : ""}"></span>`
+    ).join("");
+
+    document.getElementById("akash-prev-btn").disabled = akashIndex === 0;
+    document.getElementById("akash-next-btn").disabled = akashIndex === AKASH_WISDOM.length - 1;
+  }
+</script>
+
+<script>
+  // Empty-state fallback if you clear out the placeholder cards above.
+  const grid = document.getElementById("lab-grid");
+  if(!grid.children.length){
+    grid.innerHTML = `<div class="empty-note">Nothing here yet — add a .lab-card to try your next idea.</div>`;
+  }
+</script>
+
+</body>
+</html>
