@@ -63,6 +63,13 @@
   }
   .intro-banner b{color:var(--ink-0);}
 
+  .export-btn{
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    padding:12px; border-radius:14px; margin-bottom:14px;
+    background:rgba(255,255,255,0.04); border:1px solid var(--line);
+    color:var(--ink-1); font-size:12.5px; font-weight:700;
+  }
+
   /* ===== Add flow ===== */
   .add-section{padding:0 22px 22px;}
   .add-trigger-btn{
@@ -230,6 +237,13 @@
   <b>front of a flashcard</b>. You write your own notes for the back. No AI, no API key, works fully offline.
 </div>
 
+<div style="padding:0 22px 4px;">
+  <button class="export-btn" onclick="exportBackup()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    Export Backup (JSON)
+  </button>
+</div>
+
 <div class="add-section">
   <button class="add-trigger-btn" id="add-trigger-btn" onclick="toggleSourceRow()">
     <span class="at-icon">
@@ -346,8 +360,8 @@
 </div>
 
 <script>
-  const PHOTO_CARDS_KEY = "medflash_photo_cards_v1";
-  const MAX_DIMENSION = 480;   // resize target so localStorage doesn't fill up fast
+  const PHOTO_CARDS_KEY = "medflash_photo_cards_v1";  // legacy localStorage key — left in place, never deleted
+  const MAX_DIMENSION = 480;   // resize target so storage doesn't fill up fast
   const JPEG_QUALITY = 0.72;
   const MASTERY_STREAK = 3;    // lighter than the main app's 5 — photo decks tend to be smaller
 
@@ -364,24 +378,209 @@
     return String(str || "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
   }
 
-  function loadPhotoCards(){
+  /* =========================================================================
+     STORAGE LAYER — IndexedDB, with a one-time verified migration from the
+     old localStorage key, and an automatic fallback back to localStorage if
+     IndexedDB is unavailable or anything about the migration looks off.
+
+     Golden rule: the old localStorage data is NEVER deleted by this code,
+     under any code path. Worst case if something goes wrong, it's still
+     sitting there under PHOTO_CARDS_KEY, untouched, recoverable.
+     ========================================================================= */
+  const DB_NAME = "RecallPhotoFlashcardsDB";
+  const DB_VERSION = 1;
+  const STORE_NAME = "cards";
+
+  let usingIndexedDB = false;
+  let dbPromise = null;
+
+  function openPhotoDB(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains(STORE_NAME)){
+          db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror = e => reject(e.target.error);
+    });
+    return dbPromise;
+  }
+
+  function idbGetAll(){
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function idbPut(card){
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).put(card);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbPutAll(cards){
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      cards.forEach(c => store.put(c));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbDelete(id){
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      tx.objectStore(STORE_NAME).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbCount(){
+    return openPhotoDB().then(db => new Promise((resolve, reject) => {
+      const req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  function readLegacyLocalStorageCards(){
     try{
       const raw = localStorage.getItem(PHOTO_CARDS_KEY);
       const arr = raw ? JSON.parse(raw) : [];
       return Array.isArray(arr) ? arr : [];
     }catch(e){
-      console.error("Couldn't read photo flashcards:", e);
+      console.error("Couldn't read legacy localStorage photo flashcards:", e);
       return [];
     }
   }
 
-  function savePhotoCards(arr){
+  function writeLegacyLocalStorageCards(arr){
     try{
       localStorage.setItem(PHOTO_CARDS_KEY, JSON.stringify(arr));
     }catch(e){
       console.error("Couldn't save photo flashcards (storage may be full):", e);
       alert("Couldn't save — your browser's local storage may be full. Try removing a few older photo flashcards.");
     }
+  }
+
+  /* Runs once on page load. Decides whether to use IndexedDB or fall back
+     to localStorage, and performs a verified copy of any old localStorage
+     data into IndexedDB the first time it finds some. */
+  async function initPhotoStorage(){
+    try{
+      if(!window.indexedDB) throw new Error("IndexedDB not supported in this browser");
+
+      const existingIdbCount = await idbCount();
+      if(existingIdbCount > 0){
+        // Already migrated in a previous visit — just use IndexedDB.
+        usingIndexedDB = true;
+        return;
+      }
+
+      const legacyCards = readLegacyLocalStorageCards();
+      if(!legacyCards.length){
+        // Nothing to migrate — safe to start fresh on IndexedDB directly.
+        usingIndexedDB = true;
+        return;
+      }
+
+      await idbPutAll(legacyCards);
+      const verifyCount = await idbCount();
+      if(verifyCount === legacyCards.length){
+        usingIndexedDB = true;
+        console.log(`Migrated ${verifyCount} photo flashcards to IndexedDB. Original localStorage data left untouched as a backup.`);
+        showToast(`Storage upgraded — ${verifyCount} photo flashcard${verifyCount===1?"":"s"} moved to faster storage.`);
+      }else{
+        // Verification failed — don't trust IndexedDB, stay on localStorage.
+        // Nothing was deleted, so no data is at risk either way.
+        usingIndexedDB = false;
+        console.error(`Migration verification failed (expected ${legacyCards.length}, found ${verifyCount} in IndexedDB). Falling back to localStorage — your original data is untouched.`);
+      }
+    }catch(e){
+      console.error("IndexedDB unavailable, using localStorage instead:", e);
+      usingIndexedDB = false;
+    }
+  }
+
+  function showToast(msg){
+    const el = document.createElement("div");
+    el.textContent = msg;
+    el.style.cssText = "position:fixed; bottom:24px; left:50%; transform:translateX(-50%); max-width:88vw; background:var(--bg-1); border:1px solid var(--line); color:var(--ink-0); padding:12px 18px; border-radius:14px; font-size:12.5px; font-weight:600; z-index:100; box-shadow:0 12px 30px rgba(0,0,0,0.45); text-align:center;";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  /* ---- Unified async storage API used by the rest of the page ---- */
+  async function loadPhotoCards(){
+    if(usingIndexedDB){
+      try{
+        return await idbGetAll();
+      }catch(e){
+        console.error("IndexedDB read failed, falling back to localStorage:", e);
+        usingIndexedDB = false;
+      }
+    }
+    return readLegacyLocalStorageCards();
+  }
+
+  async function putPhotoCard(card){
+    if(usingIndexedDB){
+      try{
+        await idbPut(card);
+        return;
+      }catch(e){
+        console.error("IndexedDB write failed, falling back to localStorage:", e);
+        usingIndexedDB = false;
+      }
+    }
+    const cards = readLegacyLocalStorageCards();
+    const idx = cards.findIndex(c => c.id === card.id);
+    if(idx === -1) cards.unshift(card); else cards[idx] = card;
+    writeLegacyLocalStorageCards(cards);
+  }
+
+  async function deletePhotoCardById(id){
+    if(usingIndexedDB){
+      try{
+        await idbDelete(id);
+        return;
+      }catch(e){
+        console.error("IndexedDB delete failed, falling back to localStorage:", e);
+        usingIndexedDB = false;
+      }
+    }
+    writeLegacyLocalStorageCards(readLegacyLocalStorageCards().filter(c => c.id !== id));
+  }
+
+  async function exportBackup(){
+    const cards = await loadPhotoCards();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      storageBackend: usingIndexedDB ? "indexeddb" : "localstorage",
+      count: cards.length,
+      cards: cards,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recall-photo-flashcards-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${cards.length} photo flashcard${cards.length===1?"":"s"} to your Downloads.`);
   }
 
   function toggleSourceRow(){
@@ -413,7 +612,7 @@
 
   /* Resizes the image on a <canvas> and re-encodes as JPEG, keeping each
      stored card small — a full-res phone photo (3-8MB) would fill up
-     localStorage after just a few cards otherwise. */
+     storage after just a few cards otherwise. */
   function compressImage(file, maxDimension, quality){
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -452,13 +651,13 @@
     document.getElementById("compose-card").style.display = "none";
   }
 
-  function savePhotoCard(){
+  async function savePhotoCard(){
     const note = document.getElementById("compose-textarea").value.trim();
     if(!pendingPhotoDataUrl || !note) return;
 
-    const cards = loadPhotoCards();
+    const cards = await loadPhotoCards();
     const nextId = cards.length ? Math.max(...cards.map(c => c.id)) + 1 : 1;
-    cards.unshift({
+    await putPhotoCard({
       id: nextId,
       image: pendingPhotoDataUrl,
       note: note,
@@ -466,17 +665,16 @@
       streak: 0,
       mastered: false,
     });
-    savePhotoCards(cards);
 
     pendingPhotoDataUrl = null;
     document.getElementById("compose-card").style.display = "none";
-    renderPhotoGrid();
-    refreshHomeCounts();
+    await renderPhotoGrid();
+    await refreshHomeCounts();
   }
 
-  function renderPhotoGrid(){
+  async function renderPhotoGrid(){
     const grid = document.getElementById("photo-grid");
-    const cards = loadPhotoCards();
+    const cards = await loadPhotoCards();
     if(!cards.length){
       grid.innerHTML = `<div class="empty-note" style="grid-column:1/-1;">No photo flashcards yet — add one above to get started.</div>`;
       return;
@@ -492,32 +690,32 @@
     `).join("");
   }
 
-  document.getElementById("photo-grid").addEventListener("click", e => {
+  document.getElementById("photo-grid").addEventListener("click", async e => {
     const delBtn = e.target.closest("[data-action='delete']");
     const openBtn = e.target.closest("[data-action='open']");
     if(delBtn){
       e.stopPropagation();
       const id = Number(delBtn.dataset.id);
       if(confirm("Delete this photo flashcard? This can't be undone.")){
-        savePhotoCards(loadPhotoCards().filter(c => c.id !== id));
-        renderPhotoGrid();
-        refreshHomeCounts();
+        await deletePhotoCardById(id);
+        await renderPhotoGrid();
+        await refreshHomeCounts();
       }
       return;
     }
     if(openBtn){
-      openViewOverlay(Number(openBtn.dataset.id));
+      await openViewOverlay(Number(openBtn.dataset.id));
     }
   });
 
-  function refreshHomeCounts(){
-    const cards = loadPhotoCards().map(withDefaults);
+  async function refreshHomeCounts(){
+    const cards = (await loadPhotoCards()).map(withDefaults);
     document.getElementById("study-count").textContent = cards.filter(c => !c.mastered).length;
     document.getElementById("gallery-count").textContent = cards.length;
   }
 
-  function openGallery(){
-    renderPhotoGrid();
+  async function openGallery(){
+    await renderPhotoGrid();
     document.getElementById("gallery-overlay").classList.add("show");
   }
 
@@ -525,8 +723,9 @@
     document.getElementById("gallery-overlay").classList.remove("show");
   }
 
-  function openViewOverlay(id){
-    const card = loadPhotoCards().find(c => c.id === id);
+  async function openViewOverlay(id){
+    const cards = await loadPhotoCards();
+    const card = cards.find(c => c.id === id);
     if(!card) return;
     document.getElementById("view-img").src = card.image;
     document.getElementById("view-note").textContent = card.note;
@@ -555,8 +754,8 @@
     return arr;
   }
 
-  function startStudySession(){
-    const all = loadPhotoCards().map(withDefaults);
+  async function startStudySession(){
+    const all = (await loadPhotoCards()).map(withDefaults);
     if(!all.length){
       alert("Add a photo flashcard first!");
       return;
@@ -590,45 +789,45 @@
     document.getElementById("study-rate-row").style.display = "flex";
   }
 
-  function rateStudyCard(gotIt){
+  async function rateStudyCard(gotIt){
     const current = studyPool[studyIndex];
-    const all = loadPhotoCards().map(withDefaults);
-    const idx = all.findIndex(c => c.id === current.id);
-    if(idx !== -1){
-      if(gotIt){
-        all[idx].streak += 1;
-        if(all[idx].streak >= MASTERY_STREAK) all[idx].mastered = true;
-      }else{
-        all[idx].streak = 0;
-        all[idx].mastered = false;
-      }
-      savePhotoCards(all);
+    const updated = withDefaults(current);
+    if(gotIt){
+      updated.streak += 1;
+      if(updated.streak >= MASTERY_STREAK) updated.mastered = true;
+    }else{
+      updated.streak = 0;
+      updated.mastered = false;
     }
+    await putPhotoCard(updated);
 
     studyIndex++;
     if(studyIndex >= studyPool.length){
-      finishStudySession();
+      await finishStudySession();
     }else{
       renderStudyCard();
     }
   }
 
-  function finishStudySession(){
+  async function finishStudySession(){
     document.getElementById("study-progress-fill").style.width = "100%";
     document.getElementById("study-active-area").style.display = "none";
     document.getElementById("study-complete").style.display = "block";
     document.getElementById("study-complete-sub").textContent =
       `You reviewed ${studyPool.length} photo flashcard${studyPool.length === 1 ? "" : "s"}.`;
-    refreshHomeCounts();
+    await refreshHomeCounts();
   }
 
-  function closeStudy(){
+  async function closeStudy(){
     document.getElementById("study-overlay").classList.remove("show");
-    refreshHomeCounts();
+    await refreshHomeCounts();
   }
 
-  renderPhotoGrid();
-  refreshHomeCounts();
+  (async () => {
+    await initPhotoStorage();
+    await renderPhotoGrid();
+    await refreshHomeCounts();
+  })();
 </script>
 
 </body>
